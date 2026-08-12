@@ -97,6 +97,24 @@ if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
 }
 
 try {
+    $defaultSourceCaseRoot = Join-Path $testRoot 'default-source'
+    $defaultSourceSkillsRoot = Join-Path $defaultSourceCaseRoot '.agents\skills'
+    $defaultSourceAgentsFile = Join-Path $defaultSourceCaseRoot '.codex\AGENTS.md'
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer `
+        -SkillsRoot $defaultSourceSkillsRoot `
+        -GlobalAgentsFile $defaultSourceAgentsFile
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installer without -SkillSource failed with exit code $LASTEXITCODE"
+    }
+
+    $defaultSourceInstalledRoot = Join-Path $defaultSourceSkillsRoot 'chinese-code-comments'
+    foreach ($relative in @('SKILL.md', 'agents\openai.yaml')) {
+        $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $RepoRoot $relative)).Hash
+        $installedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $defaultSourceInstalledRoot $relative)).Hash
+        Assert-Equal -Expected $sourceHash -Actual $installedHash -Label "Default SkillSource installed the wrong file: $relative"
+    }
+
     $caseRoot = Join-Path $testRoot 'idempotent'
     $skillsRoot = Join-Path $caseRoot '.agents\skills'
     $agentsFile = Join-Path $caseRoot '.codex\AGENTS.md'

@@ -1,12 +1,23 @@
 [CmdletBinding()]
 param(
-    [string]$SkillSource = (Split-Path -Parent $PSScriptRoot),
+    [string]$SkillSource,
     [string]$SkillsRoot = (Join-Path $env:USERPROFILE '.agents\skills'),
     [string]$GlobalAgentsFile = (Join-Path $env:USERPROFILE '.codex\AGENTS.md')
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# Resolve this after binding because Windows PowerShell 5.1 can bind an empty $PSScriptRoot in defaults.
+if ([string]::IsNullOrWhiteSpace($SkillSource)) {
+    $scriptPath = $MyInvocation.MyCommand.Path
+    if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+        throw 'Cannot determine the installer script path; provide -SkillSource explicitly'
+    }
+
+    $scriptsDirectory = Split-Path -Parent $scriptPath
+    $SkillSource = Split-Path -Parent $scriptsDirectory
+}
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $strictUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $true)
