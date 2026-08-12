@@ -1,0 +1,7 @@
+interface:
+  display_name: "Chinese Code Comments"
+  short_description: "按任务意图和项目规范审查并编写准确、耐维护的多语言代码注释"
+  default_prompt: "Use $chinese-code-comments to review this code change and add accurate comments using the requested language and granularity."
+
+policy:
+  allow_implicit_invocation: true
