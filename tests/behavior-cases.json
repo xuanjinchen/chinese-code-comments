@@ -1,0 +1,82 @@
+[
+  {
+    "id": "java-implicit-write",
+    "prompt": "实现 Java 支付回调去重逻辑，完成后验证改动。",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_behavior": "结束前审查完整改动，并说明幂等、事务或重试中的非直观约束。"
+  },
+  {
+    "id": "react-state-sync",
+    "prompt": "重构这个 React 组件的筛选条件和分页状态。",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_behavior": "只在状态同步、effect 或交互边界需要维护上下文时注释。"
+  },
+  {
+    "id": "c-buffer-fix",
+    "prompt": "修复 C socket 读取中的缓冲区越界和错误路径资源泄漏。",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_behavior": "结合根因说明边界检查、所有权和资源释放。"
+  },
+  {
+    "id": "japanese-method-doc",
+    "prompt": "给新增方法写日文方法注释，说明参数、返回值和异常。",
+    "should_invoke": true,
+    "expected_language": "ja",
+    "expected_granularity": "method",
+    "expected_behavior": "采用语言惯用的方法文档格式，并覆盖参数、返回值和异常。"
+  },
+  {
+    "id": "grouped-line-comments",
+    "prompt": "给这段代码逐行添加中文注释。",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "grouped-line",
+    "expected_behavior": "连续且语义一致的简单语句合并注释。"
+  },
+  {
+    "id": "strict-english-per-line",
+    "prompt": "Every executable line must have its own English comment.",
+    "should_invoke": true,
+    "expected_language": "en",
+    "expected_granularity": "per-line",
+    "expected_behavior": "每条可执行语句分别使用英文注释，并保持语法有效。"
+  },
+  {
+    "id": "preserve-existing-english",
+    "prompt": "修改实现并补充必要的中文注释；现有英文注释仍然准确。",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_behavior": "保留准确英文注释，不翻译；新增注释使用中文。"
+  },
+  {
+    "id": "replace-stale-comment",
+    "prompt": "逻辑已经变化，修正与实现冲突的英文注释。",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_behavior": "把失真注释更新为准确中文，除非项目规范指定其他语言。"
+  },
+  {
+    "id": "json-no-comments",
+    "prompt": "更新标准 JSON 配置并补充说明。",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_behavior": "不向标准 JSON 写入非法注释，改在允许的相邻位置或最终回复说明。"
+  },
+  {
+    "id": "read-only-explanation",
+    "prompt": "解释这段函数为什么这样写，不修改文件。",
+    "should_invoke": false,
+    "expected_language": "zh-CN",
+    "expected_granularity": "none",
+    "expected_behavior": "不强制执行结束前 diff 注释流程；若用户进一步要求注释，再调用 skill。"
+  }
+]
