@@ -9,6 +9,7 @@ import { main as cliMain } from '../src/cli.js';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const expectedFiles = [
+  '.gitattributes',
   '.github/workflows/release.yml',
   '.github/workflows/ci.yml',
   '.gitignore',
@@ -219,6 +220,12 @@ function validateReleaseWorkflow(workflow) {
   assert.doesNotMatch(workflow, /npm publish/u);
 }
 
+function validateGitAttributes(attributes) {
+  assert.match(attributes, /^\*\.js text eol=lf$/mu);
+  assert.match(attributes, /^\*\.json text eol=lf$/mu);
+  assert.match(attributes, /^\*\.ya?ml text eol=lf$/mu);
+}
+
 async function main() {
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   assert.ok(nodeMajor >= 22, `Node.js 22+ is required; found ${process.versions.node}`);
@@ -244,6 +251,7 @@ async function main() {
   await validateCli(packageJson);
   validateCi(await readUtf8('.github/workflows/ci.yml'));
   validateReleaseWorkflow(await readUtf8('.github/workflows/release.yml'));
+  validateGitAttributes(await readUtf8('.gitattributes'));
 
   const executable = await readUtf8('bin/chinese-code-comments.js');
   assert.ok(executable.startsWith('#!/usr/bin/env node\n'), 'CLI must use the portable Node shebang');
