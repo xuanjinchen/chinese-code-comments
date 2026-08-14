@@ -159,11 +159,11 @@ Run: `node --test tests/contract/release-management.test.js`
 
 Expected: FAIL，报告缺少 `.github/workflows/release.yml`。
 
-- [ ] **Step 3: 实现幂等 Release 工作流**
+- [x] **Step 3: 实现幂等 Release 工作流**
 
-Workflow 顺序固定为：检出完整历史、配置 Node 22、查询 `v0.1.0`、首次发布前运行 `npm ci && npm run check && npm run release:pack`、创建初始 Release、运行 Release Please、为新 Release 构建并上传资产。后续流程不得再次进入初始发布分支。
+Workflow 顺序固定为：分别查询 `v0.1.0` Tag、Release 和资产，检出待发布或待修复 Tag，配置 Node 22，运行确定性检查和打包，补齐初始 Release；初始状态完整后才运行 manifest 模式的 Release Please。后续 Release 创建后必须重新检出其 Tag 再构建上传，`workflow_dispatch` 只修复已存在版本的资产，并通过 concurrency group 串行执行。
 
-- [ ] **Step 4: 更新 README 维护说明**
+- [x] **Step 4: 更新 README 维护说明**
 
 记录 Conventional Commits、Release PR 审核、PAT Secret 配置、首次引导和失败重跑方式；不复制完整 CHANGELOG。
 

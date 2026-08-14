@@ -9,8 +9,11 @@ import { main as cliMain } from '../src/cli.js';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const expectedFiles = [
+  '.github/workflows/release.yml',
   '.github/workflows/ci.yml',
   '.gitignore',
+  '.release-please-manifest.json',
+  'CHANGELOG.md',
   'README.md',
   'SKILL.md',
   'agents/openai.yaml',
@@ -19,6 +22,8 @@ const expectedFiles = [
   'package-lock.json',
   'package.json',
   'resources/global-policy.md',
+  'release-please-config.json',
+  'scripts/release-pack.js',
   'src/adapters/claude.js',
   'src/adapters/codex.js',
   'src/adapters/gemini.js',
@@ -38,6 +43,7 @@ const expectedFiles = [
   'src/uninstall.js',
   'tests/contract/behavior-cases.test.js',
   'tests/contract/release-package.test.js',
+  'tests/contract/release-management.test.js',
   'tests/contract/skill.test.js',
   'tests/eval/agents.test.js',
   'tests/eval/agents/claude.js',
@@ -119,6 +125,7 @@ function validatePackage(packageJson) {
     check: 'npm test && npm run validate',
     eval: 'node tests/eval/run.js',
     smoke: 'node tests/eval/smoke.js',
+    'release:pack': 'node scripts/release-pack.js',
   });
   assert.equal(packageJson.dependencies, undefined, 'runtime dependencies are not allowed');
 }
@@ -157,6 +164,7 @@ function validateReadme(readme) {
     'npm test',
     'npm run validate',
     'npm run check',
+    'npm run release:pack',
     'npm run eval -- --agent',
     'npm run smoke -- --agent',
   ];
@@ -201,6 +209,16 @@ function validateCi(workflow) {
   assert.match(workflow, /run:\s*npm pack --dry-run/u);
 }
 
+function validateReleaseWorkflow(workflow) {
+  assert.match(workflow, /googleapis\/release-please-action@v4/u);
+  assert.match(workflow, /softprops\/action-gh-release@v2/u);
+  assert.match(workflow, /group:\s*release-\$\{\{ github\.repository \}\}/u);
+  assert.match(workflow, /config-file:\s*release-please-config\.json/u);
+  assert.match(workflow, /manifest-file:\s*\.release-please-manifest\.json/u);
+  assert.match(workflow, /steps\.release\.outputs\.tag_name/u);
+  assert.doesNotMatch(workflow, /npm publish/u);
+}
+
 async function main() {
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   assert.ok(nodeMajor >= 22, `Node.js 22+ is required; found ${process.versions.node}`);
@@ -225,6 +243,7 @@ async function main() {
   validateReadme(await readUtf8('README.md'));
   await validateCli(packageJson);
   validateCi(await readUtf8('.github/workflows/ci.yml'));
+  validateReleaseWorkflow(await readUtf8('.github/workflows/release.yml'));
 
   const executable = await readUtf8('bin/chinese-code-comments.js');
   assert.ok(executable.startsWith('#!/usr/bin/env node\n'), 'CLI must use the portable Node shebang');

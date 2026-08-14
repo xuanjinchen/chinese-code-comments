@@ -36,7 +36,8 @@
     "validate": "node tests/validate.js",
     "check": "npm test && npm run validate",
     "eval": "node tests/eval/run.js",
-    "smoke": "node tests/eval/smoke.js"
+    "smoke": "node tests/eval/smoke.js",
+    "release:pack": "node scripts/release-pack.js"
   },
   "license": "Apache-2.0"
 }

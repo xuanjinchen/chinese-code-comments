@@ -14,6 +14,7 @@
 - [安装、升级、诊断与卸载](#安装升级诊断与卸载)
 - [文件安全](#文件安全)
 - [项目验证](#项目验证)
+- [版本发布](#版本发布)
 - [故障排查](#故障排查)
 - [项目结构](#项目结构)
 - [边界与限制](#边界与限制)
@@ -258,6 +259,39 @@ npm run smoke -- --agent claude
 每次 live eval 或 smoke 只运行一个 Agent。所选 Agent CLI 必须位于 `PATH` 中，并已完成登录和所需配置。CLI 缺失、未登录、命令协议变化或模型调用失败时，命令会明确失败，不会静默跳过。
 
 live eval 运行 19 个跨语言结构化案例。smoke 在隔离的临时 Git 仓库中发送不含“注释”字样的代码修改请求，验证自动触发行为、真实 diff、注释质量和最终审查报告；当 Agent 输出可观察的工具轨迹时，还会直接验证 Skill 读取和审查顺序，不提供工具轨迹的 Agent 则只报告行为证据。两者可能产生模型费用，且不会由 `npm run check` 或默认 CI 自动运行。
+
+## 版本发布
+
+项目使用 Semantic Versioning、Conventional Commits 和 Release Please 维护正式版本。每个版本都对应不可移动的 `vX.Y.Z` Tag、`CHANGELOG.md` 记录和 GitHub Release，并附带 npm tarball 与 SHA-256 校验文件；项目不发布到 npm Registry。
+
+提交类型决定下一个版本号：
+
+| 提交 | 版本影响 |
+| --- | --- |
+| `fix: ...` | 补丁版本 |
+| `feat: ...` | 次版本 |
+| 带 `!` 或 `BREAKING CHANGE:` | 主版本 |
+| `docs:`、`test:`、`ci:`、`chore:` | 默认不单独触发版本升级 |
+
+发布流程：
+
+1. 使用 Conventional Commits 将变更合入 `main`。
+2. Release Please 创建或更新 Release PR，维护 `package.json`、manifest 和 `CHANGELOG.md`。
+3. 审核 Release PR 中的版本号与发布说明，确认兼容性、升级影响和已知问题后合并。
+4. 工作流创建对应 Tag 和 GitHub Release，并从该 Tag 构建、测试和上传两个资产。
+
+首次运行会幂等创建 `v0.1.0`。如果 Tag、Release 或资产只完成了一部分，后续 `main` 工作流会补齐缺失内容；其他版本可通过 `workflow_dispatch` 的 `release_tag` 输入重建已有 Release 的资产，Tag 不会移动。
+
+建议配置仓库 Secret `RELEASE_PLEASE_TOKEN`，使用仅限本仓库的细粒度 PAT，并授予 Contents、Pull requests 和 Issues 写权限。未配置时工作流回退到 `GITHUB_TOKEN`；此时 Release PR 触发的其他工作流可能需要人工批准，且由 Release 事件触发的新工作流会受到 GitHub 的递归触发限制。
+
+本地检查发布资产：
+
+```bash
+npm run release:pack
+npm run release:pack -- --output .release-check
+```
+
+默认产物写入 `dist/`。输出目录必须为空或已由本命令标记，脚本不会清理未受管的非空目录。该命令只执行 `npm pack` 并生成 `.sha256`，不会执行 `npm publish`。
 
 ## 故障排查
 

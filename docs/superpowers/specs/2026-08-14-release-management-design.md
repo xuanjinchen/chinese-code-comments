@@ -21,31 +21,31 @@
 
 根目录新增 `release-please-config.json` 和 `.release-please-manifest.json`。`googleapis/release-please-action@v4` 在 `main` 更新后读取 Conventional Commits，维护 Release PR。合并 Release PR 后由同一 Action 更新版本与 `CHANGELOG.md`，创建 Tag 和 GitHub Release。
 
-Action 优先使用仓库 Secret `RELEASE_PLEASE_TOKEN`，未配置时回退到 `GITHUB_TOKEN`。使用回退 Token 时，Release PR 触发其他工作流会受到 GitHub 的递归触发限制，因此仓库维护者应配置细粒度 PAT，并允许 Actions 创建 Pull Request。
+Action 优先使用仓库 Secret `RELEASE_PLEASE_TOKEN`，未配置时回退到 `GITHUB_TOKEN`。使用回退 Token 创建或更新 Release PR 时，相关工作流可能处于人工批准状态，Release 事件也不会继续触发新工作流。仓库维护者应配置仅限本仓库的细粒度 PAT，并授予 Contents、Pull requests 和 Issues 写权限；Workflow 的 `permissions` 只限制 `GITHUB_TOKEN`，不能缩减 PAT 权限。
 
 ### 发布资产
 
 新增 Node.js 维护脚本，将 `npm pack` 产物写入指定目录，并为 tarball 生成同名 `.sha256` 文件。脚本必须：
 
 - 仅接受仓库内或显式传入的输出目录；
-- 每次执行前清理目标目录，避免上传旧资产；
+- 每次执行前只清理空目录或带本脚本所有权标记的目录，避免上传旧资产或误删未受管内容；
 - 使用 `npm pack --ignore-scripts --json` 获取真实文件名；
 - 以小写十六进制 SHA-256 和标准双空格文件名格式输出校验文件；
 - 在 Windows、macOS 和 Linux 使用同一个 Node.js 入口。
 
-Release 工作流只在 Release 创建成功后上传这两个资产，不发布到 npm Registry。
+Release 工作流只在 Release 创建成功后上传这两个资产，不发布到 npm Registry。后续版本创建后必须重新检出对应 Tag，再执行检查、打包和上传，不能从较新的 `main` 构建旧版本资产。
 
 ## 首次发布
 
-当前版本为 `0.1.0`，远端尚无版本 Tag。工作流在首次运行时查询 `v0.1.0`：
+当前版本为 `0.1.0`，远端尚无版本 Tag。工作流在首次运行时分别查询 `v0.1.0` Tag、GitHub Release 和两个预期资产：
 
-1. Tag 已存在时不执行引导逻辑。
-2. Tag 不存在时，检验 `package.json` 与 manifest 均为 `0.1.0`。
-3. 运行完整仓库检查并构建发布资产。
-4. 以当前已验证提交创建 `v0.1.0` Tag 和 GitHub Release。
-5. 使用初始 `CHANGELOG.md` 作为 Release 说明并上传资产。
+1. 三者完整时跳过引导逻辑。
+2. Tag 不存在时，检出当前提交并检验 `package.json` 与 manifest 均为 `0.1.0`。
+3. Tag 已存在但 Release 或资产不完整时，检出该 Tag 并重新验证、打包和补齐缺失状态。
+4. Release 存在但不可变 Tag 不存在时立即失败，不猜测应绑定的提交。
+5. 以初始 `CHANGELOG.md` 作为 Release 说明，并允许普通 Release 重跑覆盖同名资产。
 
-该判断以远端 Tag 为幂等边界。首次发布完成后，所有后续版本只由 Release Please 创建，避免两个流程竞争同一 Release。
+Tag、Release 和资产的组合状态共同构成幂等边界。首次发布完成后，所有后续版本只由 Release Please 创建，避免两个流程竞争同一 Release。
 
 ## Release 信息
 
@@ -61,11 +61,12 @@ README 增加版本维护入口、提交类型和发版步骤，但不复制完�
 
 ## 权限与失败处理
 
-- Workflow 权限限制为 `contents: write`、`pull-requests: write` 和 `issues: write`。
+- Workflow 权限限制为 `contents: write`、`pull-requests: write` 和 `issues: write`，并通过不取消运行的 concurrency group 串行处理相邻推送。
 - 测试、打包或校验失败时不得创建初始 Release。
 - 后续 Release 只通过合并已审核的 Release PR 触发。
 - 资产上传失败时工作流失败，保留已创建 Release 以便重跑同一工作流补齐资产，不移动 Tag。
-- 同名资产重跑时允许覆盖，内容必须来自对应 Tag 的检出状态。
+- 同名资产重跑时允许覆盖，内容必须来自对应 Tag 的检出状态；`workflow_dispatch` 只接受已存在的 `vX.Y.Z` Tag 和 Release。
+- 启用 GitHub immutable releases 后，已发布资产不能覆盖，修复必须通过新补丁版本完成。
 
 ## 测试与验收
 

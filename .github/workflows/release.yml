@@ -1,0 +1,212 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vX.Y.Z release tag whose assets should be rebuilt
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release state
+        id: state
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          script: |
+            const initialRef = 'refs/tags/v0.1.0';
+            const initialTag = initialRef.replace('refs/tags/', '');
+            const isRepair = context.eventName === 'workflow_dispatch';
+            const requestedTag = context.payload.inputs?.release_tag;
+            const tagName = isRepair ? requestedTag : initialTag;
+            if (!/^v\d+\.\d+\.\d+$/.test(tagName ?? '')) {
+              throw new Error('release_tag must use the vX.Y.Z format');
+            }
+
+            const { owner, repo } = context.repo;
+            let tagExists = true;
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${tagName}` });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              tagExists = false;
+            }
+
+            let release = null;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag: tagName,
+              })).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            if (isRepair) {
+              if (!tagExists || !release) {
+                throw new Error(`Cannot repair ${tagName}: both the tag and GitHub Release must exist`);
+              }
+              core.setOutput('source_ref', `refs/tags/${tagName}`);
+              core.setOutput('target_tag', tagName);
+              core.setOutput('repair', 'true');
+              core.setOutput('bootstrap_needed', 'false');
+              return;
+            }
+
+            if (release && !tagExists) {
+              throw new Error(`${initialTag} has a GitHub Release but no immutable tag`);
+            }
+            // 首次发布只有 Tag、Release 和两个资产都完整时才退出引导流程。
+            const expectedAssets = [
+              'chinese-code-comments-0.1.0.tgz',
+              'chinese-code-comments-0.1.0.tgz.sha256',
+            ];
+            const existingAssets = new Set((release?.assets ?? []).map((asset) => asset.name));
+            const missingAssets = expectedAssets.filter((asset) => !existingAssets.has(asset));
+            const bootstrapNeeded = !tagExists || !release || missingAssets.length > 0;
+
+            core.setOutput('source_ref', bootstrapNeeded && tagExists ? initialRef : context.sha);
+            core.setOutput('target_tag', bootstrapNeeded ? initialTag : '');
+            core.setOutput('repair', 'false');
+            core.setOutput('bootstrap_needed', String(bootstrapNeeded));
+
+      - name: Check out verified source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.state.outputs.source_ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run deterministic checks
+        run: npm run check
+
+      - name: Validate selected release tag
+        if: steps.state.outputs.target_tag != ''
+        uses: actions/github-script@v7
+        env:
+          TARGET_TAG: ${{ steps.state.outputs.target_tag }}
+        with:
+          script: |
+            const { readFileSync } = require('node:fs');
+            const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version;
+            const expectedTag = `v${packageVersion}`;
+            if (process.env.TARGET_TAG !== expectedTag) {
+              throw new Error(`Tag ${process.env.TARGET_TAG} does not match package version ${packageVersion}`);
+            }
+            if (process.env.TARGET_TAG === 'v0.1.0') {
+              const manifestVersion = JSON.parse(
+                readFileSync('.release-please-manifest.json', 'utf8'),
+              )['.'];
+              if (manifestVersion !== '0.1.0') {
+                throw new Error('Initial release requires manifest version 0.1.0');
+              }
+            }
+      - name: Build initial or repair assets
+        if: steps.state.outputs.bootstrap_needed == 'true' || steps.state.outputs.repair == 'true'
+        run: npm run release:pack
+
+      - name: Create or complete v0.1.0
+        if: steps.state.outputs.bootstrap_needed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0
+          target_commitish: ${{ steps.state.outputs.source_ref }}
+          name: v0.1.0
+          body_path: CHANGELOG.md
+          files: |
+            dist/*.tgz
+            dist/*.sha256
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+      - name: Repair existing release assets
+        if: steps.state.outputs.repair == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.state.outputs.target_tag }}
+          files: |
+            dist/*.tgz
+            dist/*.sha256
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+      - name: Run Release Please
+        id: release
+        if: github.event_name == 'push' && steps.state.outputs.bootstrap_needed == 'false'
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # 发布资产必须来自不可变 Tag，避免失败重跑时误用较新的 main。
+      - name: Check out released tag
+        if: steps.release.outputs.release_created == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Reinstall released dependencies
+        if: steps.release.outputs.release_created == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Recheck released tag
+        if: steps.release.outputs.release_created == 'true'
+        run: npm run check
+
+      - name: Validate released tag
+        if: steps.release.outputs.release_created == 'true'
+        uses: actions/github-script@v7
+        env:
+          TARGET_TAG: ${{ steps.release.outputs.tag_name }}
+        with:
+          script: |
+            const { readFileSync } = require('node:fs');
+            const packageVersion = JSON.parse(readFileSync('package.json', 'utf8')).version;
+            const expectedTag = `v${packageVersion}`;
+            if (process.env.TARGET_TAG !== expectedTag) {
+              throw new Error(`Tag ${process.env.TARGET_TAG} does not match package version ${packageVersion}`);
+            }
+
+      - name: Build released assets
+        if: steps.release.outputs.release_created == 'true'
+        run: npm run release:pack
+
+      - name: Upload released assets
+        if: steps.release.outputs.release_created == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag_name }}
+          files: |
+            dist/*.tgz
+            dist/*.sha256
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
