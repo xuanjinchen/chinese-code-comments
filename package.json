@@ -1,6 +1,6 @@
 {
   "name": "chinese-code-comments",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Install automatic, concise code-comment rules for coding agents.",
   "keywords": [
     "agent-skill",

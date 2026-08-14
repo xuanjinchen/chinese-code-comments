@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.1](https://github.com/xuanjinchen/chinese-code-comments/compare/v0.1.0...v0.1.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* derive release asset names from package version ([54af1b8](https://github.com/xuanjinchen/chinese-code-comments/commit/54af1b8bd4d8b5dd683326e0a14521b044240880))
+* preserve portable line endings in Git checkouts ([4026cea](https://github.com/xuanjinchen/chinese-code-comments/commit/4026cea841520b6effa97caee5970e722303dfcd))
+
 ## [0.1.0](https://github.com/xuanjinchen/chinese-code-comments/releases/tag/v0.1.0) (2026-08-14)
 
 ### Features
