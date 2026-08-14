@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chinese code comments behavior evaluation output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "mode",
+    "language",
+    "code",
+    "explanation",
+    "comment_count",
+    "comments",
+    "executable_statement_count",
+    "independently_commented_statement_count",
+    "json_comments_added"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "GROUPED",
+        "STRICT",
+        "SCOPED"
+      ]
+    },
+    "language": {
+      "type": "string",
+      "minLength": 2,
+      "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+      "description": "BCP 47-style language tag selected from the user request, nearest project convention, or zh-CN default."
+    },
+    "code": {
+      "type": "string"
+    },
+    "explanation": {
+      "type": "string"
+    },
+    "comment_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "kind",
+          "covered_executable_lines"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "line",
+              "block",
+              "doc"
+            ]
+          },
+          "covered_executable_lines": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "executable_statement_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "independently_commented_statement_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of executable statements whose immediately preceding non-blank line is a standalone comment. Statements only covered by an earlier grouped comment are not counted."
+    },
+    "json_comments_added": {
+      "type": "boolean"
+    }
+  }
+}

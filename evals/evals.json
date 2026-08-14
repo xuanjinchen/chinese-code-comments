@@ -1,0 +1,234 @@
+{
+  "skill_name": "chinese-code-comments",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "使用 $chinese-code-comments 实现 Java 支付回调去重逻辑，完成后验证改动。数据库已对 ledger.event_id 建立唯一约束，重复键异常表示该回调已处理。请返回修订后的代码，并只在并发、幂等、事务或重试约束需要维护上下文时添加注释。\n\n```java\nimport java.math.BigDecimal;\n\nfinal class PaymentCallbackService {\n    private final LedgerRepository ledgerRepository;\n\n    PaymentCallbackService(LedgerRepository ledgerRepository) {\n        this.ledgerRepository = ledgerRepository;\n    }\n\n    void handleCallback(String eventId, BigDecimal amount) {\n        ledgerRepository.save(new LedgerEntry(eventId, amount));\n    }\n}\n```",
+      "expected_output": "返回选择 SCOPED 模式的 Java 代码；新增 1-4 条简体中文高价值注释，说明数据库唯一约束承担并发去重以及重复回调的事务或重试语义。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "新增注释数量在 1 到 4 之间，且每条报告的注释都能在返回代码中定位。",
+        "注释说明唯一约束、幂等或去重，并涉及重复回调、事务或重试语义。",
+        "返回结果说明已完成注释审查。"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "使用 $chinese-code-comments 修复 C socket 读取中的缓冲区越界和错误路径资源泄漏。`out` 在成功时取得缓冲区所有权，失败时函数必须释放已分配内存。请返回修订后的代码和必要注释。\n\n```c\nint read_message(int fd, char **out) {\n    char *buffer = malloc(1024);\n    if (buffer == NULL) {\n        return -1;\n    }\n\n    ssize_t count = recv(fd, buffer, 1024, 0);\n    if (count < 0) {\n        return -1;\n    }\n\n    buffer[count] = '\\0';\n    *out = buffer;\n    return (int)count;\n}\n```",
+      "expected_output": "返回选择 SCOPED 模式的 C 代码；修复终止符越界和失败路径泄漏，新增 2-4 条简体中文注释说明容量边界、资源释放与成功后的所有权转移。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "新增注释数量在 2 到 4 之间，且每条报告的注释都能在返回代码中定位。",
+        "代码为字符串终止符保留空间，并在 recv 失败时释放缓冲区。",
+        "注释说明边界约束以及资源释放或所有权转移。"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "使用 $chinese-code-comments 给下面新增 Java 方法写日文方法注释，说明参数、返回值和异常。只添加一个惯用的 Javadoc 方法注释，不要逐语句注释。\n\n```java\nReceipt loadReceipt(String id) {\n    if (id == null || id.isBlank()) {\n        throw new IllegalArgumentException(\"id must not be blank\");\n    }\n    return repository.findById(id)\n        .orElseThrow(() -> new ReceiptNotFoundException(id));\n}\n```",
+      "expected_output": "返回选择 SCOPED 模式的 Java 方法，只新增一个日文 Javadoc，并包含 @param、@return、@throws 说明。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 ja。",
+        "只新增一个 doc 类型注释。",
+        "Javadoc 包含 @param、@return 和 @throws 标签。",
+        "注释包含日文假名，并能在返回代码中定位。"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "使用 $chinese-code-comments 给这段代码逐行添加中文注释。仅使用独立的 # 行注释，不添加 docstring 或行尾注释。\n\n```python\ndef normalize(values):\n    total = sum(values)\n    if total == 0:\n        return [0 for _ in values]\n    scale = 1 / total\n    return [value * scale for value in values]\n```",
+      "expected_output": "选择 GROUPED 模式，返回带 2-3 条简体中文 # 注释的 Python 代码；至少一条注释覆盖两条相关可执行语句，不能逐语句注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 GROUPED，language 为 zh-CN。",
+        "返回代码中有 2-3 条独立 # 注释，并与结构化 comments 数量一致。",
+        "至少一条注释覆盖两条或更多相关可执行语句。",
+        "独立注释覆盖数少于 5 条可执行语句，不得退化成逐语句注释。"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Use $chinese-code-comments. Every executable line in the following code must have its own English comment. Use standalone # comments only; do not add docstrings or inline comments.\n\n```python\ntotal = sum(values)\nif total == 0:\n    result = [0 for _ in values]\nelse:\n    scale = 1 / total\n    result = [value * scale for value in values]\n```",
+      "expected_output": "Select STRICT mode and return valid Python with exactly five standalone English comments, one immediately before each executable statement.",
+      "files": [],
+      "expectations": [
+        "mode is STRICT and language is en.",
+        "The returned code contains exactly five standalone # comments, matching the structured comments count.",
+        "All five executable statements have an immediately preceding independent comment.",
+        "Every reported comment covers exactly one executable statement."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "使用 $chinese-code-comments 把下面标准 JSON 配置的 enabled 更新为 true，并补充说明。不得向 JSON 写入任何注释；说明只能放在结构化返回的 explanation 字段中。\n\n```json\n{\n  \"feature\": {\n    \"enabled\": false,\n    \"timeoutSeconds\": 30\n  }\n}\n```",
+      "expected_output": "选择 SCOPED 模式，返回可被标准 JSON 解析器读取且 enabled 为 true 的 JSON；comments 为空，json_comments_added 为 false，中文说明位于 explanation。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "code 可被标准 JSON 解析，且 feature.enabled 为 true。",
+        "code 中不存在 //、/* */ 或 # 注释，comments 数量为 0。",
+        "json_comments_added 为 false，中文说明仅位于 explanation。"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Use $chinese-code-comments to add line-by-line English comments to this Python code. This is an ordinary line-by-line request, not an every-line requirement. Use standalone # comments only; do not add docstrings or inline comments.\n\n```python\ndef normalize(values):\n    total = sum(values)\n    if total == 0:\n        return [0 for _ in values]\n    scale = 1 / total\n    return [value * scale for value in values]\n```",
+      "expected_output": "Select GROUPED mode, return Python with 2-3 standalone English # comments, include at least one comment that covers multiple related executable statements, and do not comment every executable statement independently.",
+      "files": [],
+      "expectations": [
+        "mode is GROUPED and language is en.",
+        "Returned code has 2-3 standalone # comments, matching the structured comments count.",
+        "At least one comment covers two or more executable statements.",
+        "Independent comment coverage stays below all five executable statements."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "使用 $chinese-code-comments 对下面のコードに一行ずつ日本語のコメントを追加してください。これは普通の一行ずつ依頼であり、すべての実行行に必ずコメントする依頼ではありません。独立した # コメントだけを使い、docstring や行末コメントは追加しないでください。\n\n```python\ndef normalize(values):\n    total = sum(values)\n    if total == 0:\n        return [0 for _ in values]\n    scale = 1 / total\n    return [value * scale for value in values]\n```",
+      "expected_output": "GROUPED モードを選択し、2-3 個の日本語 # コメントを返す。少なくとも 1 つのコメントは複数の関連する実行文をカバーし、逐語句コメントにしない。",
+      "files": [],
+      "expectations": [
+        "mode 为 GROUPED，language 为 ja。",
+        "返回代码中有 2-3 条独立 # 注释，并与结构化 comments 数量一致。",
+        "至少一条注释覆盖两条或更多相关可执行语句。",
+        "不得为全部 5 条可执行语句分别添加独立注释。"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "只读审查下面 Python 代码的风险，不修改任何文件，不添加注释，不执行完整 diff 注释流程。请在结构化返回中保留原代码，并在 explanation 说明风险。\n\n```python\ndef average(values):\n    return sum(values) / len(values)\n```",
+      "expected_output": "返回只读审查结果：mode 为 SCOPED，language 为 zh-CN，code 与输入一致，comments 为空，说明空输入会导致除零风险，并且不声称已执行写入任务的完整 diff 流程。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "code 与输入代码一致，comments 为空。",
+        "explanation 指出空输入或 len(values)=0 会导致除零风险。",
+        "不声称执行写入任务的完整 diff 注释流程。"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "使用 $chinese-code-comments 修复下面 Python 代码：空输入返回 None。不要逐行注释，也不要给每条可执行语句都添加注释。请返回修订后的代码和必要说明。\n\n```python\ndef average(values):\n    return sum(values) / len(values)\n```",
+      "expected_output": "返回写入结果：mode 为 SCOPED，language 为 zh-CN，空输入返回 None，且否定式逐行或全称提及不触发 GROUPED 或 STRICT。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "code 修复空输入除零问题并保持有效 Python。",
+        "新增注释不超过一条，不进行逐语句注释。",
+        "不因否定式逐行或全称提及选择 GROUPED 或 STRICT。",
+        "explanation 报告已完成完整改动的注释审查。"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "使用 $chinese-code-comments 修改下面 Python 函数：attempts 小于 1 时抛出 ValueError。现有英文注释仍然准确，必须原样保留；不要翻译或改写它。\n\n```python\ndef retry_request(send, attempts):\n    # Keep retries bounded so callers receive a failure promptly.\n    for _ in range(attempts):\n        if send():\n            return True\n    return False\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，增加参数边界检查，同时逐字保留准确英文注释；不为了统一语言改写历史注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "attempts 小于 1 时抛出 ValueError。",
+        "准确英文注释逐字保留且只出现一次。",
+        "不新增显而易见或逐语句注释。"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "使用 $chinese-code-comments 修改下面 Python 函数：空输入返回 None，并把已经失真的英文注释更新为准确的中文注释。\n\n```python\n# Empty input returns zero.\ndef average(values):\n    return sum(values) / len(values)\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，增加空输入分支，把失真的英文注释替换为准确中文，不保留错误原文。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "空输入返回 None，非空输入仍计算平均值。",
+        "失真的英文注释已删除。",
+        "只保留一条准确中文注释并完成注释审查。"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "使用 $chinese-code-comments 给下面新增 Java 方法写法文 Javadoc，说明参数、返回值和异常。只添加一个方法注释，不要逐语句注释。项目规范可能指定另一种默认语言，但本次用户指定的法文优先。\n\n```java\nReceipt loadReceipt(String id) {\n    if (id == null || id.isBlank()) {\n        throw new IllegalArgumentException(\"id must not be blank\");\n    }\n    return repository.findById(id)\n        .orElseThrow(() -> new ReceiptNotFoundException(id));\n}\n```",
+      "expected_output": "选择 SCOPED 和 fr，只新增一个法文 Javadoc，并包含 @param、@return 和 @throws。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 fr。",
+        "只新增一个 doc 类型注释。",
+        "Javadoc 包含 @param、@return 和 @throws。",
+        "注释使用法文并能在返回代码中定位。"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "使用 $chinese-code-comments。用户没有指定注释语言。请为下面函数的重试上限补充一条必要的维护注释。\n\n```python\ndef retry_request(send, max_attempts):\n    for _ in range(max_attempts):\n        if send():\n            return True\n    return False\n```",
+      "expected_output": "选择 SCOPED 和 en，按项目就近规范添加一条英文维护注释，不回退到默认中文。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 en。",
+        "只新增一条独立英文注释。",
+        "注释说明重试次数有上限或调用预算约束。",
+        "不添加中文注释。"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "使用 $chinese-code-comments 重构下面 React 组件：当 query 改变时，同时重置页码并同步筛选条件。请返回修订后的组件，只在状态同步或 effect 边界需要维护上下文时添加简体中文注释。\n\n```tsx\nfunction Results({ query }: { query: string }) {\n  const [page, setPage] = useState(1);\n  const [filter, setFilter] = useState(query);\n\n  useEffect(() => {\n    setFilter(query);\n  }, [query]);\n\n  return <Table filter={filter} page={page} onPageChange={setPage} />;\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，在 query 同步 effect 中重置 page，只添加 1 条说明状态一致性边界的中文注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "query 变化时在同一 effect 中同步 filter 并把 page 重置为 1。",
+        "只新增一条中文维护注释，说明筛选条件与分页状态必须同步。",
+        "explanation 报告已完成完整改动的注释审查。"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "使用 $chinese-code-comments 修改下面 TypeScript 函数：增加 active 参数，并在 active 为 false 时返回空数组。实现应保持自解释；没有维护上下文时不要强行添加注释，但仍需报告完整注释审查结果。\n\n```typescript\nfunction visibleIds(items: Item[]): string[] {\n  return items.filter((item) => item.visible).map((item) => item.id);\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，增加 active 参数和清晰的提前返回，不新增源码注释，并在 explanation 中报告已完成审查且无需新增注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "函数增加 boolean active 参数，并在 inactive 时返回空数组。",
+        "comments 为空且代码不包含新增注释。",
+        "explanation 报告完整注释审查已完成且无需新增注释。"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "使用 $chinese-code-comments 修复下面 C++ 代码：register_session(std::move(session)) 会取得所有权，move 后不得再访问 session。请让 session 在转移前启动，转移后不再访问；只添加一条说明所有权边界的简体中文注释。\n\n```cpp\nstd::unique_ptr<Session> create_session() {\n    auto session = std::make_unique<Session>();\n    register_session(std::move(session));\n    session->start();\n    return session;\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，在 std::move 前调用 start，转移后不再访问 session，并添加一条所有权边界注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "session->start() 位于 register_session(std::move(session)) 之前。",
+        "所有权转移后不再访问或返回 session。",
+        "只新增一条中文维护注释并报告完整注释审查。"
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "使用 $chinese-code-comments 修改下面 PostgreSQL 迁移：通过部分唯一索引保证每个 user_id 最多只有一条 status = 'active' 的订阅。只添加一条简体中文 SQL 注释，说明并发一致性约束。\n\n```sql\nCREATE TABLE subscriptions (\n    id BIGSERIAL PRIMARY KEY,\n    user_id BIGINT NOT NULL,\n    status TEXT NOT NULL\n);\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，新增 user_id 上仅覆盖 active 行的部分唯一索引，并添加一条并发唯一性注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "SQL 可执行并拒绝同用户第二条 active 记录，同时允许 inactive 记录。",
+        "使用 CREATE UNIQUE INDEX ... (user_id) WHERE status = 'active'。",
+        "只新增一条中文 SQL 注释并报告完整注释审查。"
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "使用 $chinese-code-comments 修改下面 Terraform Kubernetes Deployment：滚动发布期间不可减少可用副本，把 max_unavailable 改为 0，并保留 max_surge = 1。只添加一条说明可用性约束的简体中文 HCL 注释。\n\n```hcl\nresource \"kubernetes_deployment\" \"api\" {\n  spec {\n    replicas = 3\n    strategy {\n      type = \"RollingUpdate\"\n      rolling_update {\n        max_unavailable = 1\n        max_surge       = 1\n      }\n    }\n  }\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，把 max_unavailable 改为 0，保留 max_surge = 1，并添加一条可用性约束注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "HCL 花括号平衡，max_unavailable = 0 且 max_surge = 1。",
+        "只新增一条中文维护注释，说明滚动发布的副本可用性约束。",
+        "explanation 报告已完成完整改动的注释审查。"
+      ]
+    }
+  ]
+}

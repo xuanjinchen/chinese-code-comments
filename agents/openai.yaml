@@ -1,7 +1,7 @@
 interface:
   display_name: "Chinese Code Comments"
   short_description: "按任务意图和项目规范审查并编写准确、耐维护的多语言代码注释"
-  default_prompt: "Use $chinese-code-comments to review this code change and add accurate comments using the requested language and granularity."
+  default_prompt: "Use $chinese-code-comments. GROUPED requires a positive line-by-line/逐行/一行ずつ request without universal quantifiers; merely lacking an every-line requirement is not enough, and ordinary comment updates or negated mentions stay SCOPED. STRICT requires an affirmative universal every-line requirement; negated universal mentions stay SCOPED. Write tasks require the full diff workflow; read-only explanation or review does not require it."
 
 policy:
   allow_implicit_invocation: true

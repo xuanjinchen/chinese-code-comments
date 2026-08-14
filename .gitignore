@@ -1,0 +1,8 @@
+/eval-results/
+/.codex-smoke-*/
+/.codex-handoff.md
+coverage/
+.npm/
+node_modules/
+*.class
+*.log

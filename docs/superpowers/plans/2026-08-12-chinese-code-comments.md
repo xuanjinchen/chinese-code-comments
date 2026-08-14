@@ -1,5 +1,8 @@
 # Chinese Code Comments Implementation Plan
 
+> [!IMPORTANT]
+> **本历史文档已被 2026-08-14 Node 多 Agent 方案取代。** 当前设计请参阅 [Node.js 跨平台与多 Agent 适配设计](../specs/2026-08-14-node-multi-agent-design.md)，当前实施计划请参阅 [Node.js Multi-Agent Migration Implementation Plan](2026-08-14-node-multi-agent.md)。以下内容仅保留为历史记录。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 创建、验证并全局安装 `chinese-code-comments` skill，使 Codex 在所有项目的代码写入任务中执行两阶段注释审查，同时遵循用户指定的语言和注释粒度。
@@ -7,6 +10,8 @@
 **Architecture:** 仓库根目录保存可分发的 skill 源文件，`SKILL.md` 负责触发和工作流，`agents/openai.yaml` 负责 UI 与隐式调用策略。仓库内的 PowerShell 契约测试验证规则完整性，安装器只复制运行时文件到用户级 skill 目录，并使用受管标记块幂等更新全局 `AGENTS.md`；最终在隔离临时仓库中验证无需提示词的全局执行路径。
 
 **Tech Stack:** Markdown、YAML、PowerShell 5+、Git、Codex CLI、skill-creator Python 脚本
+
+**执行状态（2026-08-13）：** Task 1-5 已实施。后续验收补充了跨语言模式、否定式写入、旧注释保留与失真更新、任意指定语言、项目就近语言规范、19 个结构化 live eval、双安装根、原子回滚、幂等卸载及可复跑的无注释提示词写入烟雾测试。smoke 还验证按需读取调试 skill、编辑前意图记录和带实际 patch 的最终 diff。下列步骤保留为历史执行记录，最终状态以仓库当前文件和测试为准。
 
 ## Global Constraints
 

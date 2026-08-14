@@ -1,0 +1,20 @@
+{
+  "name": "chinese-code-comments",
+  "version": "0.1.0",
+  "description": "Install automatic, concise code-comment rules for coding agents.",
+  "type": "module",
+  "bin": {
+    "chinese-code-comments": "./bin/chinese-code-comments.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "validate": "node tests/validate.js",
+    "check": "npm test && npm run validate",
+    "eval": "node tests/eval/run.js",
+    "smoke": "node tests/eval/smoke.js"
+  },
+  "license": "Apache-2.0"
+}

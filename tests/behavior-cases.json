@@ -1,6 +1,6 @@
 [
   {
-    "id": "java-implicit-write",
+    "id": "java-high-value-write",
     "prompt": "实现 Java 支付回调去重逻辑，完成后验证改动。",
     "should_invoke": true,
     "expected_language": "zh-CN",
@@ -10,10 +10,22 @@
   {
     "id": "react-state-sync",
     "prompt": "重构这个 React 组件的筛选条件和分页状态。",
+    "input_code": "function Results({ query }) {\n  const [page, setPage] = useState(1);\n  const [filter, setFilter] = useState(query);\n\n  useEffect(() => {\n    setFilter(query);\n  }, [query]);\n\n  return <Table filter={filter} page={page} onPageChange={setPage} />;\n}",
     "should_invoke": true,
     "expected_language": "zh-CN",
     "expected_granularity": "default",
+    "expected_comment_count": 1,
     "expected_behavior": "只在状态同步、effect 或交互边界需要维护上下文时注释。"
+  },
+  {
+    "id": "self-explanatory-write",
+    "prompt": "给这个 TypeScript 函数增加 active 参数，并在 active 为 false 时返回空数组；代码保持清晰，不需要为了任务强行添加注释。",
+    "input_code": "function visibleIds(items: Item[]): string[] {\n  return items.filter((item) => item.visible).map((item) => item.id);\n}",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_comment_count": 0,
+    "expected_behavior": "完成代码修改和完整注释审查，不新增无维护价值的注释，并明确报告无需新增注释。"
   },
   {
     "id": "c-buffer-fix",
@@ -34,22 +46,50 @@
   {
     "id": "grouped-line-comments",
     "prompt": "给这段代码逐行添加中文注释。",
+    "input_code": "def normalize(values):\n    total = sum(values)\n    if total == 0:\n        return [0 for _ in values]\n    scale = 1 / total\n    return [value * scale for value in values]",
     "should_invoke": true,
     "expected_language": "zh-CN",
     "expected_granularity": "grouped-line",
+    "expected_comment_count_min": 2,
+    "expected_comment_count_max": 3,
     "expected_behavior": "连续且语义一致的简单语句合并注释。"
+  },
+  {
+    "id": "english-grouped-line-comments",
+    "prompt": "Add line-by-line English comments to this code.",
+    "input_code": "def normalize(values):\n    total = sum(values)\n    if total == 0:\n        return [0 for _ in values]\n    scale = 1 / total\n    return [value * scale for value in values]",
+    "should_invoke": true,
+    "expected_language": "en",
+    "expected_granularity": "grouped-line",
+    "expected_comment_count_min": 2,
+    "expected_comment_count_max": 3,
+    "expected_behavior": "将普通 line-by-line 请求按语义块分组，不把每条语句分别注释。"
+  },
+  {
+    "id": "japanese-grouped-line-comments",
+    "prompt": "このコードに一行ずつ日本語のコメントを追加してください。",
+    "input_code": "def normalize(values):\n    total = sum(values)\n    if total == 0:\n        return [0 for _ in values]\n    scale = 1 / total\n    return [value * scale for value in values]",
+    "should_invoke": true,
+    "expected_language": "ja",
+    "expected_granularity": "grouped-line",
+    "expected_comment_count_min": 2,
+    "expected_comment_count_max": 3,
+    "expected_behavior": "全称约束のない「一行ずつ」は意味のまとまりごとにコメントする。"
   },
   {
     "id": "strict-english-per-line",
     "prompt": "Every executable line must have its own English comment.",
+    "input_code": "total = sum(values)\nif total == 0:\n    result = [0 for _ in values]\nelse:\n    scale = 1 / total\n    result = [value * scale for value in values]",
     "should_invoke": true,
     "expected_language": "en",
     "expected_granularity": "per-line",
+    "expected_comment_count": 5,
     "expected_behavior": "每条可执行语句分别使用英文注释，并保持语法有效。"
   },
   {
     "id": "preserve-existing-english",
-    "prompt": "修改实现并补充必要的中文注释；现有英文注释仍然准确。",
+    "prompt": "修改实现：attempts 小于 1 时抛出 ValueError；现有英文注释仍然准确，请保留原文。",
+    "input_code": "def retry_request(send, attempts):\n    # Keep retries bounded so callers receive a failure promptly.\n    for _ in range(attempts):\n        if send():\n            return True\n    return False",
     "should_invoke": true,
     "expected_language": "zh-CN",
     "expected_granularity": "default",
@@ -57,7 +97,8 @@
   },
   {
     "id": "replace-stale-comment",
-    "prompt": "逻辑已经变化，修正与实现冲突的英文注释。",
+    "prompt": "修改 average：空输入返回 None，并修正与新行为冲突的英文注释。",
+    "input_code": "# Empty input returns zero.\ndef average(values):\n    return sum(values) / len(values)",
     "should_invoke": true,
     "expected_language": "zh-CN",
     "expected_granularity": "default",
@@ -66,6 +107,7 @@
   {
     "id": "json-no-comments",
     "prompt": "更新标准 JSON 配置并补充说明。",
+    "input_code": "{\n  \"feature\": {\n    \"enabled\": false,\n    \"timeoutSeconds\": 30\n  }\n}",
     "should_invoke": true,
     "expected_language": "zh-CN",
     "expected_granularity": "default",
@@ -78,5 +120,71 @@
     "expected_language": "zh-CN",
     "expected_granularity": "none",
     "expected_behavior": "不强制执行结束前 diff 注释流程；若用户进一步要求注释，再调用 skill。"
+  },
+  {
+    "id": "read-only-code-review",
+    "prompt": "只读审查下面代码的风险，不修改任何文件。",
+    "input_code": "def average(values):\n    return sum(values) / len(values)",
+    "should_invoke": false,
+    "expected_language": "zh-CN",
+    "expected_granularity": "none",
+    "expected_behavior": "只读指出空输入会导致除零风险，不修改代码，也不强制实现阶段或完整 diff 注释流程。"
+  },
+  {
+    "id": "negated-strict-write",
+    "prompt": "修复空输入导致的除零问题，空输入返回 None；不要逐行注释，也不要给每条可执行语句都添加注释。",
+    "input_code": "def average(values):\n    return sum(values) / len(values)",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_behavior": "写入任务仍执行审查，但否定式逐行和全称提及不触发 GROUPED 或 STRICT，保持 SCOPED。"
+  },
+  {
+    "id": "french-method-doc",
+    "prompt": "给 Java 方法添加法文 Javadoc，说明参数、返回值和异常。",
+    "input_code": "Receipt loadReceipt(String id) {\n    if (id == null || id.isBlank()) {\n        throw new IllegalArgumentException(\"id must not be blank\");\n    }\n    return repository.findById(id)\n        .orElseThrow(() -> new ReceiptNotFoundException(id));\n}",
+    "should_invoke": true,
+    "expected_language": "fr",
+    "expected_granularity": "method",
+    "expected_behavior": "用户指定的法文优先于默认中文，并使用惯用 Javadoc 覆盖参数、返回值和异常。"
+  },
+  {
+    "id": "project-convention-english",
+    "prompt": "为重试上限补充一条必要的维护注释。",
+    "input_code": "def retry_request(send, max_attempts):\n    for _ in range(max_attempts):\n        if send():\n            return True\n    return False",
+    "should_invoke": true,
+    "expected_language": "en",
+    "expected_granularity": "default",
+    "expected_behavior": "用户未指定语言时遵循项目就近英文规范，而不是使用默认中文。"
+  },
+  {
+    "id": "cpp-ownership-transfer",
+    "prompt": "修复 C++ unique_ptr 所有权转移后的空指针访问，并补充必要注释。",
+    "input_code": "std::unique_ptr<Session> create_session() {\n    auto session = std::make_unique<Session>();\n    register_session(std::move(session));\n    session->start();\n    return session;\n}",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_comment_count": 1,
+    "expected_behavior": "把 start 放在 move 之前，只添加一条说明所有权转移边界的中文维护注释。"
+  },
+  {
+    "id": "sql-partial-unique-index",
+    "prompt": "修改 PostgreSQL 迁移：只允许每个用户存在一个 active 订阅，并补充必要注释。",
+    "input_code": "CREATE TABLE subscriptions (\n    id BIGSERIAL PRIMARY KEY,\n    user_id BIGINT NOT NULL,\n    status TEXT NOT NULL\n);",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_comment_count": 1,
+    "expected_behavior": "新增 status='active' 的部分唯一索引，并用一条 SQL 注释说明并发一致性约束。"
+  },
+  {
+    "id": "terraform-rolling-availability",
+    "prompt": "修改 Terraform Kubernetes Deployment：滚动发布期间不可减少可用副本，并补充必要注释。",
+    "input_code": "resource \"kubernetes_deployment\" \"api\" {\n  spec {\n    replicas = 3\n    strategy {\n      type = \"RollingUpdate\"\n      rolling_update {\n        max_unavailable = 1\n        max_surge       = 1\n      }\n    }\n  }\n}",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_comment_count": 1,
+    "expected_behavior": "把 max_unavailable 改为 0，只添加一条说明容量或可用性约束的中文注释。"
   }
 ]
