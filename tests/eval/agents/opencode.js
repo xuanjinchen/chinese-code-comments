@@ -21,6 +21,7 @@ export function normalizeOutput(result) {
 
 export default {
   id: 'opencode',
+  toolTrace: 'available',
   aliases: ['open-code'],
   projectRulesFile: 'AGENTS.md',
   buildInvocation,

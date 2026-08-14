@@ -22,6 +22,7 @@ export function normalizeOutput(result) {
 
 export default {
   id: 'gemini',
+  toolTrace: 'available',
   aliases: ['gemini-cli'],
   projectRulesFile: 'GEMINI.md',
   buildInvocation,

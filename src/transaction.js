@@ -1,24 +1,35 @@
 import { constants } from 'node:fs';
 import {
   copyFile,
+  chmod,
   lstat,
   mkdir,
   readdir,
   rename,
   rm,
   rmdir,
+  stat,
   writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-async function statOrNull(target) {
+async function fileStatOrNull(target) {
   try {
     return await lstat(target);
   } catch (error) {
-    if (error?.code === 'ENOENT') {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
       return null;
     }
+    throw error;
+  }
+}
+
+async function directoryStatOrNull(target) {
+  try {
+    return await stat(target);
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return null;
     throw error;
   }
 }
@@ -37,7 +48,7 @@ async function preflight(entries) {
     }
     targets.add(identity);
 
-    const targetStat = await statOrNull(target);
+    const targetStat = await fileStatOrNull(target);
     if (targetStat && !targetStat.isFile()) {
       throw new Error(`Transaction target must be a file: ${target}`);
     }
@@ -45,7 +56,7 @@ async function preflight(entries) {
     const missingDirectories = [];
     let cursor = path.dirname(target);
     while (true) {
-      const cursorStat = await statOrNull(cursor);
+      const cursorStat = await directoryStatOrNull(cursor);
       if (cursorStat) {
         if (!cursorStat.isDirectory()) {
           throw new Error(`Path ancestor must be a directory: ${cursor}`);
@@ -59,7 +70,13 @@ async function preflight(entries) {
       }
       cursor = parent;
     }
-    prepared.push({ ...entry, target, existed: Boolean(targetStat), missingDirectories });
+    prepared.push({
+      ...entry,
+      target,
+      existed: Boolean(targetStat),
+      mode: targetStat?.mode,
+      missingDirectories,
+    });
   }
   return prepared;
 }
@@ -99,7 +116,7 @@ export async function executeTransaction(entries, { fault = null } = {}) {
       }
       for (let index = entry.missingDirectories.length - 1; index >= 0; index -= 1) {
         const directory = entry.missingDirectories[index];
-        if (!(await statOrNull(directory))) {
+        if (!(await directoryStatOrNull(directory))) {
           await mkdir(directory);
           createdDirectories.push(directory);
         }
@@ -118,6 +135,10 @@ export async function executeTransaction(entries, { fault = null } = {}) {
         : null;
       if (entry.stage) {
         await writeFile(entry.stage, entry.content, { flag: 'wx' });
+        if (entry.existed && process.platform !== 'win32') {
+          // 原文件权限属于用户配置的一部分，原子替换不能退回 Node 默认创建权限。
+          await chmod(entry.stage, entry.mode);
+        }
       }
       if (entry.backup) {
         await copyFile(entry.target, entry.backup, constants.COPYFILE_EXCL);

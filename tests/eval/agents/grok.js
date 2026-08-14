@@ -22,6 +22,7 @@ export function normalizeOutput(result) {
 
 export default {
   id: 'grok',
+  toolTrace: 'available',
   aliases: ['grok-cli', 'grok-build'],
   projectRulesFile: 'AGENTS.md',
   buildInvocation,

@@ -105,21 +105,6 @@ function atomicCallbackGuard(source) {
     && chargeCalls.length === 1;
 }
 
-function simulateCallbackCount(source) {
-  if (!atomicCallbackGuard(source)) return null;
-  const processed = new Set();
-  let sideEffects = 0;
-  for (let id = 0; id < 1_000; id += 1) {
-    const callbackId = `callback-${id}`;
-    for (let attempt = 0; attempt < 16; attempt += 1) {
-      if (processed.has(callbackId)) continue;
-      processed.add(callbackId);
-      sideEffects += 1;
-    }
-  }
-  return sideEffects;
-}
-
 function addCheck(checks, name, passed, detail) {
   checks.push({ name, passed: Boolean(passed), detail });
 }
@@ -174,8 +159,55 @@ function isSuccessfulSkillRead(event, expectedSkillFiles) {
     && frontmatterName(item.aggregated_output) === 'chinese-code-comments';
 }
 
+function stringValues(value, output = []) {
+  if (typeof value === 'string') output.push(value);
+  else if (Array.isArray(value)) value.forEach((item) => stringValues(item, output));
+  else if (value && typeof value === 'object') {
+    Object.values(value).forEach((item) => stringValues(item, output));
+  }
+  return output;
+}
+
+function eventSucceeded(event) {
+  const statuses = [
+    event?.status,
+    event?.state?.status,
+    event?.result?.status,
+    event?.part?.state?.status,
+  ];
+  return event?.exit_code === 0
+    || event?.success === true
+    || statuses.some((status) => ['success', 'completed'].includes(String(status).toLowerCase()));
+}
+
+function successfulSkillReadIndex(events, expectedSkillFiles) {
+  const expectedPaths = expectedSkillFiles.map((file) => file
+    .replaceAll('\\', '/')
+    .replace(/\/+/gu, '/')
+    .toLowerCase());
+  for (let index = 0; index < events.length; index += 1) {
+    if (isSuccessfulSkillRead(events[index], expectedSkillFiles)) return index;
+    const text = normalizedText(events[index]);
+    const readTool = /"(?:tool|tool_name|toolname)":"?(?:read|read_file|get-content|cat|sed|head|type)/u.test(text)
+      || /(?:get-content|\bcat\b|\bsed\b|\bhead\b)/u.test(text);
+    const skillPath = expectedPaths.some((file) => text.includes(file))
+      || /\/chinese-code-comments\/skill\.md(?:\b|$)/u.test(text);
+    if (!readTool || !skillPath) continue;
+
+    // 读取请求附近可能同时包含失败结果或旧输出，只有明确成功的事件能够证明 Skill 已加载。
+    const nearbyOutput = events.slice(index, index + 3)
+      .filter(eventSucceeded)
+      .flatMap((event) => stringValues(event));
+    if (nearbyOutput.some((value) => frontmatterName(value) === 'chinese-code-comments')) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 export function evaluateSmokeEvidence({
   agent,
+  toolTrace = null,
   prompt,
   beforeSource,
   afterSource,
@@ -184,18 +216,24 @@ export function evaluateSmokeEvidence({
   events = [],
   expectedSkillFiles = [],
   changedFiles = [],
+  runtimeValidation = null,
 }) {
   const checks = [];
-  const skillIndex = eventIndex(events, (event) => isSuccessfulSkillRead(event, expectedSkillFiles));
+  const skillIndex = successfulSkillReadIndex(events, expectedSkillFiles);
   const editIndex = eventIndex(events, (event, text) =>
     event?.item?.type === 'file_change'
       || /"(?:tool|tool_name)":"?(?:edit|write|replace|write_file)/u.test(text));
   const reviewIndex = eventIndex(events, (event, text) =>
     text.includes('git diff') && text.includes('diff --git a/paymentservice.java b/paymentservice.java'));
   const directSkillEvidence = skillIndex >= 0;
+  const effectiveToolTrace = toolTrace ?? (events.length > 0 ? 'available' : 'unavailable');
   const directTraceOrder = skillIndex >= 0 && editIndex > skillIndex && reviewIndex > editIndex;
   const atomicGuard = atomicCallbackGuard(afterSource);
-  const sideEffectCount = simulateCallbackCount(afterSource);
+  const preservesMethodSignature = /\bboolean\s+process\s*\(\s*String\s+callbackId\s*\)/u.test(
+    codeOnly('java', afterSource).code,
+  );
+  const sideEffectCount = runtimeValidation?.sideEffectCount
+    ?? (atomicGuard && preservesMethodSignature ? 1_000 : null);
   const commentInventory = extractComments('java', afterSource);
   const chineseComments = commentInventory.filter((comment) => /[\u4e00-\u9fff]/u.test(comment.text));
   const restrainedComments = commentInventory.length >= 1
@@ -208,7 +246,7 @@ export function evaluateSmokeEvidence({
   const finalReviewEvidence = reportsCompletedReview(finalText);
   const finalSkillUseEvidence = reportsSkillUse(finalText);
   const implicitPrompt = !/注释|comments?/iu.test(prompt);
-  const behavioralEvidence = agent !== 'codex'
+  const behavioralEvidence = effectiveToolTrace === 'unavailable'
     && implicitPrompt
     && atomicGuard
     && restrainedComments
@@ -216,15 +254,26 @@ export function evaluateSmokeEvidence({
     && finalSkillUseEvidence
     && reportsFullDiffReview(finalText);
   const policySkillEvidence = directSkillEvidence || behavioralEvidence;
-  const policySkillEvidenceType = directSkillEvidence ? 'direct' : behavioralEvidence ? 'behavioral' : 'none';
+  const policySkillEvidenceType = directSkillEvidence
+    ? 'direct'
+    : behavioralEvidence
+      ? 'behavioral'
+      : 'inconclusive';
   const traceOrder = directSkillEvidence ? directTraceOrder : behavioralEvidence;
 
   addCheck(checks, 'implicit prompt', implicitPrompt, 'Prompt must not request comments.');
   addCheck(checks, 'source changed', afterSource !== beforeSource, 'PaymentService.java must change.');
   addCheck(checks, 'policy and Skill evidence', policySkillEvidence, 'Expected a successful read of the installed Skill.');
   addCheck(checks, 'trace order', traceOrder, `skill=${skillIndex}; edit=${editIndex}; review=${reviewIndex}`);
+  addCheck(checks, 'process method signature', preservesMethodSignature, 'Expected boolean process(String callbackId).');
   addCheck(checks, 'atomic callback guard', atomicGuard, 'Expected one guarded processed.add call using a concurrent set or synchronized critical section.');
   addCheck(checks, 'single callback side effect', sideEffectCount === 1_000, `sideEffectCount=${sideEffectCount}`);
+  addCheck(
+    checks,
+    'Java compile and concurrent runtime',
+    runtimeValidation === null || runtimeValidation.valid,
+    runtimeValidation?.error ?? runtimeValidation?.tool ?? 'Not requested by the pure evidence evaluator.',
+  );
   addCheck(checks, 'restrained Chinese comments', restrainedComments, `comments=${commentInventory.length}`);
   addCheck(checks, 'complete diff evidence', diffEvidence, 'Expected the target patch and its Chinese intent comment.');
   addCheck(checks, 'target-only change', changedFiles.length === 1 && changedFiles[0] === 'PaymentService.java', `changedFiles=${changedFiles.join(',')}`);
@@ -292,6 +341,104 @@ function runtimeContext(env = process.env) {
 
 async function runGit(args, cwd, env, timeoutMs) {
   return runProcess({ command: 'git', args, cwd, stdin: null, env, timeoutMs });
+}
+
+const JAVA_SMOKE_HARNESS = `import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+final class PaymentServiceSmoke {
+    public static void main(String[] args) throws Exception {
+        Method process = PaymentService.class.getDeclaredMethod("process", String.class);
+        if (process.getReturnType() != boolean.class) {
+            throw new AssertionError("process must return boolean");
+        }
+        process.setAccessible(true);
+        PaymentService service = new PaymentService();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        ByteArrayOutputStream charges = new ByteArrayOutputStream();
+        PrintStream original = System.out;
+        int accepted = 0;
+        try (PrintStream captured = new PrintStream(charges, true, StandardCharsets.UTF_8)) {
+            System.setOut(captured);
+            for (int index = 0; index < 1000; index++) {
+                String callbackId = "callback-" + index;
+                CountDownLatch start = new CountDownLatch(1);
+                Future<Boolean> first = executor.submit(() -> {
+                    start.await();
+                    return (boolean) process.invoke(service, callbackId);
+                });
+                Future<Boolean> second = executor.submit(() -> {
+                    start.await();
+                    return (boolean) process.invoke(service, callbackId);
+                });
+                start.countDown();
+                if (first.get()) accepted++;
+                if (second.get()) accepted++;
+            }
+        } finally {
+            System.setOut(original);
+            executor.shutdownNow();
+        }
+        long sideEffects = charges.toString(StandardCharsets.UTF_8).lines().count();
+        if (accepted != 1000 || sideEffects != 1000) {
+            throw new AssertionError("accepted=" + accepted + "; sideEffects=" + sideEffects);
+        }
+        System.out.println("sideEffectCount=" + sideEffects);
+    }
+}
+`;
+
+function runtimeDiagnostic(error) {
+  return error?.result?.stderr?.trim()
+    || error?.result?.stdout?.trim()
+    || (error instanceof Error ? error.message : String(error));
+}
+
+export async function validateJavaRuntime(source, outputRoot, env, timeoutMs) {
+  const runtimeRoot = path.join(outputRoot, 'java-runtime');
+  const sourcePath = path.join(runtimeRoot, 'PaymentService.java');
+  const harnessPath = path.join(runtimeRoot, 'PaymentServiceSmoke.java');
+  await mkdir(runtimeRoot, { recursive: true });
+  await writeFile(sourcePath, source, 'utf8');
+  await writeFile(harnessPath, JAVA_SMOKE_HARNESS, 'utf8');
+  try {
+    await runProcess({
+      command: 'javac',
+      args: ['-proc:none', '-d', runtimeRoot, sourcePath, harnessPath],
+      cwd: runtimeRoot,
+      env,
+      timeoutMs,
+    });
+  } catch (error) {
+    if (!error?.result) throw error;
+    return { valid: false, tool: 'javac/java', error: runtimeDiagnostic(error), sideEffectCount: null };
+  }
+  let execution;
+  try {
+    execution = await runProcess({
+      command: 'java',
+      args: ['-cp', runtimeRoot, 'PaymentServiceSmoke'],
+      cwd: runtimeRoot,
+      env,
+      timeoutMs,
+    });
+  } catch (error) {
+    if (!error?.result) throw error;
+    return { valid: false, tool: 'javac/java', error: runtimeDiagnostic(error), sideEffectCount: null };
+  }
+  const sideEffectCount = Number(execution.stdout.match(/sideEffectCount=(\d+)/u)?.[1]);
+  return {
+    valid: sideEffectCount === 1_000,
+    tool: 'javac/java',
+    error: sideEffectCount === 1_000 ? null : `Unexpected Java smoke output: ${execution.stdout.trim()}`,
+    sideEffectCount,
+  };
 }
 
 async function readOptional(filePath) {
@@ -385,6 +532,8 @@ export async function runSmoke({
   const statusResult = await runGit(['status', '--short'], workspaceRoot, processEnv, timeoutMs);
   const diffPath = path.join(outputRoot, 'PaymentService.diff');
   await writeFile(diffPath, diffResult.stdout, 'utf8');
+  // 真实 JVM 夹具同时约束方法签名和并发副作用，静态模式匹配只用于补充诊断。
+  const runtimeValidation = await validateJavaRuntime(afterSource, outputRoot, processEnv, timeoutMs);
 
   const expectedSkillFiles = [path.join(
     adapter.skillRoot(context),
@@ -393,6 +542,7 @@ export async function runSmoke({
   )];
   const evidence = evaluateSmokeEvidence({
     agent: runner.id,
+    toolTrace: runner.toolTrace,
     prompt: SMOKE_PROMPT,
     beforeSource: PAYMENT_FIXTURE,
     afterSource,
@@ -401,6 +551,7 @@ export async function runSmoke({
     events: normalized.events,
     expectedSkillFiles,
     changedFiles: changedFileNames(statusResult.stdout),
+    runtimeValidation,
   });
   const result = {
     ...evidence,

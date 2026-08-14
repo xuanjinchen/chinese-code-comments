@@ -68,6 +68,20 @@ test('runner 选择支持正式名称和明确别名', () => {
   assert.throws(() => selectRunner('unknown'), /Unknown eval agent: unknown/);
 });
 
+test('runner 显式声明工具轨迹能力', () => {
+  assert.deepEqual(
+    RUNNER_IDS.map((id) => [id, selectRunner(id).toolTrace]),
+    [
+      ['codex', 'available'],
+      ['claude', 'unavailable'],
+      ['gemini', 'available'],
+      ['grok', 'available'],
+      ['opencode', 'available'],
+      ['hermes', 'unavailable'],
+    ],
+  );
+});
+
 test('六种输出格式归一为最终文本和工具事件', () => {
   const codex = normalizeCodex({
     stdout: [
@@ -246,8 +260,47 @@ test('eval 入口强制显式选择一个 Agent', () => {
     resultsRoot: null,
     timeoutMs: 120_000,
   });
-  assert.equal(DEFAULT_CASE_IDS.length, 19);
-  assert.equal(DEFAULT_CASE_IDS.includes('read-only-explanation'), false);
+  assert.equal(DEFAULT_CASE_IDS.length, 20);
+  assert.equal(DEFAULT_CASE_IDS.includes('read-only-explanation'), true);
+});
+
+test('runBehaviorEval 将非法 JSON 记为案例失败并继续后续案例', async (context) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'ccc-eval-invalid-json-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  let invocationCount = 0;
+  const validSecondResponse = {
+    case_id: 'json-no-comments',
+    mode: 'SCOPED',
+    language: 'zh-CN',
+    code: '{"feature":{"enabled":true,"timeoutSeconds":30}}',
+    explanation: '已按要求更新配置并完成完整改动的注释审查，标准 JSON 不写入注释。',
+    comment_count: 0,
+    comments: [],
+    executable_statement_count: 0,
+    independently_commented_statement_count: 0,
+    json_comments_added: false,
+  };
+  const runner = {
+    id: 'codex',
+    projectRulesFile: 'AGENTS.md',
+    buildInvocation() {
+      const output = invocationCount++ === 0 ? 'not-json' : JSON.stringify(validSecondResponse);
+      return { command: process.execPath, args: ['-e', `process.stdout.write(${JSON.stringify(output)})`], stdin: null, env: {} };
+    },
+    normalizeOutput(result) {
+      return { finalText: result.stdout, events: [] };
+    },
+  };
+
+  const summary = await runBehaviorEval({
+    agent: 'codex',
+    resultsRoot: path.join(directory, 'results'),
+    caseIds: ['self-explanatory-write', 'json-no-comments'],
+    runner,
+  });
+
+  assert.equal(summary.cases.length, 2);
+  assert.deepEqual(summary.cases.map(({ passed }) => passed), [false, true]);
 });
 
 test('runBehaviorEval 用假 CLI 执行案例并写入完整评测产物', async (context) => {

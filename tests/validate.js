@@ -31,11 +31,13 @@ const expectedFiles = [
   'src/files/managed-block.js',
   'src/files/text.js',
   'src/install.js',
+  'src/installer-lock.js',
   'src/policies/render.js',
   'src/state.js',
   'src/transaction.js',
   'src/uninstall.js',
   'tests/contract/behavior-cases.test.js',
+  'tests/contract/release-package.test.js',
   'tests/contract/skill.test.js',
   'tests/eval/agents.test.js',
   'tests/eval/agents/claude.js',
@@ -61,6 +63,7 @@ const expectedFiles = [
   'tests/unit/adapters.test.js',
   'tests/unit/cli.test.js',
   'tests/unit/managed-block.test.js',
+  'tests/unit/installer-lock.test.js',
   'tests/unit/state.test.js',
   'tests/unit/text.test.js',
   'tests/validate.js',
@@ -105,6 +108,11 @@ function validatePackage(packageJson) {
     'chinese-code-comments': './bin/chinese-code-comments.js',
   });
   assert.equal(packageJson.engines?.node, '>=22');
+  assert.deepEqual(packageJson.files, ['agents', 'bin', 'resources', 'src', 'SKILL.md']);
+  assert.equal(packageJson.repository?.url, 'git+https://github.com/xuanjinchen/chinese-code-comments.git');
+  assert.equal(packageJson.homepage, 'https://github.com/xuanjinchen/chinese-code-comments#readme');
+  assert.equal(packageJson.bugs?.url, 'https://github.com/xuanjinchen/chinese-code-comments/issues');
+  assert.ok(packageJson.keywords?.includes('code-comments'));
   assert.deepEqual(packageJson.scripts, {
     test: 'node --test',
     validate: 'node tests/validate.js',
@@ -141,7 +149,7 @@ function validateOpenAiMetadata(metadata) {
 function validateReadme(readme) {
   const requiredSnippets = [
     'Node.js 22',
-    'npx --yes github:xuanjinchen/chinese-code-comments install',
+    'npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git install',
     'npx skills add xuanjinchen/chinese-code-comments -g --all',
     'install --agent',
     'uninstall --agent',
@@ -186,8 +194,11 @@ async function validateCli(packageJson) {
 function validateCi(workflow) {
   assert.match(workflow, /os:\s*\[windows-latest, macos-latest, ubuntu-latest\]/u);
   assert.match(workflow, /node-version:\s*22/u);
+  assert.match(workflow, /actions\/setup-python@v5/u);
+  assert.match(workflow, /actions\/setup-java@v4/u);
   assert.match(workflow, /run:\s*npm ci --ignore-scripts/u);
   assert.match(workflow, /run:\s*npm run check/u);
+  assert.match(workflow, /run:\s*npm pack --dry-run/u);
 }
 
 async function main() {

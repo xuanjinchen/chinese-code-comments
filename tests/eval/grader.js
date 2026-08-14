@@ -16,6 +16,7 @@ const CASE_LANGUAGES = {
   'preserve-existing-english': 'python',
   'replace-stale-comment': 'python',
   'json-no-comments': 'json',
+  'read-only-explanation': 'python',
   'read-only-code-review': 'python',
   'negated-strict-write': 'python',
   'french-method-doc': 'java',
@@ -27,6 +28,18 @@ const CASE_LANGUAGES = {
 
 function normalizeComment(value) {
   return String(value ?? '').replace(/^\s*(?:\/+|--+|#|\/\*+|\*+\/?|\*\/)\s*/gm, '').replace(/\s+/g, '');
+}
+
+function normalizeSource(value) {
+  return String(value ?? '').replace(/\r\n?|\n/gu, '\n').trim();
+}
+
+function claimsCompletedFullDiffReview(value) {
+  const text = String(value ?? '');
+  const completion = /已完成|完成了|completed|performed/iu.test(text);
+  const fullDiff = /(?:完整|complete|full)[\s\S]{0,20}\bdiff\b|\bdiff\b[\s\S]{0,20}(?:完整|complete|full)/iu.test(text);
+  const commentReview = /注释[\s\S]{0,20}审查|审查[\s\S]{0,20}注释|comment[\s\S]{0,20}review|review[\s\S]{0,20}comment/iu.test(text);
+  return completion && fullDiff && commentReview;
 }
 
 function sqlWithoutComments(code) {
@@ -100,6 +113,7 @@ function commentBounds(definition) {
     'c-buffer-fix': [2, 4],
     'japanese-method-doc': [1, 1],
     'json-no-comments': [0, 0],
+    'read-only-explanation': [0, 0],
     'read-only-code-review': [0, 0],
     'negated-strict-write': [0, 1],
     'preserve-existing-english': [0, 0],
@@ -207,7 +221,7 @@ function resultFor(caseId, checks) {
   };
 }
 
-export function gradeCase(definition, response) {
+export function gradeCase(definition, response, { syntaxResult = null } = {}) {
   const schemaErrors = validateResponse(response);
   if (schemaErrors.length > 0) {
     return resultFor(definition.id, [{
@@ -224,6 +238,12 @@ export function gradeCase(definition, response) {
   const bounds = commentBounds(definition);
   const language = CASE_LANGUAGES[definition.id];
   const joinedComments = comments.map(({ text }) => String(text)).join(' ');
+  const syntaxValid = (targetLanguage) => syntaxResult?.language === targetLanguage
+    ? syntaxResult.valid
+    : isStructurallyValid(targetLanguage, response.code);
+  const syntaxEvidence = syntaxResult
+    ? `${syntaxResult.tool ?? 'missing tool'}: ${syntaxResult.error ?? 'syntax valid'}`
+    : 'No external syntax result was supplied; used the deterministic structural check.';
 
   add('Response has the expected case_id', response.case_id === definition.id, `Expected ${definition.id}; actual ${response.case_id}.`);
   add('Response selects the expected comment mode', response.mode === expectedMode(definition), `Expected ${expectedMode(definition)}; actual ${response.mode}.`);
@@ -236,10 +256,13 @@ export function gradeCase(definition, response) {
   if (definition.should_invoke) {
     add('Write result reports the complete-change comment review', reportsCompleteReview(response.explanation), `Explanation: ${response.explanation}`);
   }
+  if (CASE_LANGUAGES[definition.id] === 'python') {
+    add('Returned Python passes syntax validation', syntaxValid('python'), syntaxEvidence);
+  }
 
   switch (definition.id) {
     case 'java-high-value-write': {
-      add('Returned Java passes structural validation', isStructurallyValid('java', response.code), 'Checked balanced delimiters and closed lexical regions without invoking a compiler.');
+      add('Returned Java passes syntax validation', syntaxValid('java'), syntaxEvidence);
       const visible = codeOnly('java', response.code).code;
       const duplicate = visible.match(/try\s*\{(?<try>[\s\S]*?)\}\s*catch\s*\(\s*(?:[\w.]+\.)?DuplicateKeyException\s+(?<name>\w+)\s*\)\s*\{(?<catch>[^{}]*)\}/u);
       const handles = duplicate && /ledgerRepository\s*\.\s*save\s*\(/u.test(duplicate.groups.try) && !/\bthrow\b/u.test(duplicate.groups.catch);
@@ -250,14 +273,23 @@ export function gradeCase(definition, response) {
       break;
     }
     case 'c-buffer-fix': {
-      add('Returned C passes structural validation', isStructurallyValid('c', response.code), 'Checked balanced delimiters and closed lexical regions without invoking a parser.');
+      add('Returned C passes syntax validation', syntaxValid('c'), syntaxEvidence);
       const visible = codeOnly('c', response.code).code;
-      let reserves = /malloc\s*\(\s*(?:1025|1024\s*\+\s*1)\s*\)/u.test(visible) || /recv\s*\([^\r\n]+,\s*1023\s*,/u.test(visible);
-      if (!reserves) {
-        const named = visible.match(/malloc\s*\(\s*(?<name>[A-Za-z_]\w*)\s*\+\s*1\s*\)/u);
-        reserves = Boolean(named && new RegExp(`recv\\s*\\([^\\r\\n]+,\\s*${named.groups.name}\\s*,`, 'u').test(visible));
-      }
-      add('Code reserves room for the string terminator', reserves, 'Checked allocation capacity against the receive limit.');
+      const allocation = visible.match(/malloc\s*\(\s*(?<capacity>[^()]+?)\s*\)/u)?.groups.capacity.trim();
+      const receiveLimit = visible.match(/recv\s*\(\s*[^,]+,\s*[^,]+,\s*(?<limit>[^,]+?)\s*,/u)?.groups.limit.trim();
+      const integerValue = (expression) => {
+        if (!/^\d+(?:\s*\+\s*\d+)*$/u.test(expression ?? '')) return null;
+        return expression.split('+').reduce((total, value) => total + Number(value.trim()), 0);
+      };
+      const allocationValue = integerValue(allocation);
+      const receiveValue = integerValue(receiveLimit);
+      const namedCapacity = allocation?.match(/^(?<name>[A-Za-z_]\w*)\s*\+\s*1$/u)?.groups.name;
+      // 分配容量、接收上限和终止符写入必须引用同一容量契约，不能分别命中无关常量。
+      const reserves = allocationValue !== null && receiveValue !== null
+        ? allocationValue >= receiveValue + 1
+        : Boolean(namedCapacity && receiveLimit === namedCapacity);
+      const terminatesAtReceivedLength = /buffer\s*\[\s*count\s*\]\s*=/u.test(visible);
+      add('Code reserves room for the string terminator', reserves && terminatesAtReceivedLength, 'Checked allocation capacity, receive limit, and terminator index as one boundary contract.');
       const failure = visible.match(/if\s*\(\s*count\s*<\s*0\s*\)\s*\{(?<body>[^{}]*)\}/u);
       const releases = Boolean(failure && /free\s*\(\s*buffer\s*\)/u.test(failure.groups.body));
       let keepsOwnership = false;
@@ -271,7 +303,7 @@ export function gradeCase(definition, response) {
     }
     case 'japanese-method-doc':
     case 'french-method-doc': {
-      add('Returned Java method passes structural validation', isStructurallyValid('java', response.code), 'Checked balanced method structure without invoking javac.');
+      add('Returned Java method passes syntax validation', syntaxValid('java'), syntaxEvidence);
       const javadocs = (response.code.match(/\/\*\*/gu) ?? []).length;
       add(definition.id === 'japanese-method-doc' ? 'Code contains exactly one reported Javadoc method comment' : 'Code contains exactly one French Javadoc', comments.length === 1 && comments[0].kind === 'doc' && javadocs === 1, `comments=${commentCount}; Javadoc blocks=${javadocs}.`);
       add(definition.id === 'japanese-method-doc' ? 'Javadoc covers parameters, return value, and exceptions' : 'French Javadoc covers parameters, return value, and exceptions', /@param/u.test(response.code) && /@return/u.test(response.code) && /@throws/u.test(response.code), 'Checked @param, @return, and @throws tags.');
@@ -281,6 +313,7 @@ export function gradeCase(definition, response) {
     case 'english-grouped-line-comments':
     case 'japanese-grouped-line-comments': {
       const metrics = pythonMetrics(response.code);
+      metrics.structurallyValid = syntaxValid('python');
       const reportedSpans = comments.map(({ covered_executable_lines: value }) => value).sort((a, b) => a - b);
       const derivedSpans = [...metrics.groupedSpans].sort((a, b) => a - b);
       add('Standalone Python comment count matches the report', metrics.structurallyValid && metrics.standaloneComments === commentCount, `Structure valid=${metrics.structurallyValid}; code=${metrics.standaloneComments}; reported=${commentCount}.`);
@@ -301,28 +334,34 @@ export function gradeCase(definition, response) {
       add('GROUPED comments are anchored at both semantic steps', total > 0 && scale > 0 && lines[total - 1].trim().startsWith('#') && lines[scale - 1].trim().startsWith('#'), 'Checked placement before total and scale.');
       break;
     }
+    case 'read-only-explanation':
+      add('Read-only explanation does not rewrite code', normalizeSource(response.code) === normalizeSource(definition.input_code), 'Compared the returned and input snippets.');
+      add('Read-only explanation reports no added comments', commentCount === 0 && response.comment_count === 0, `comment_count=${response.comment_count}; comments.length=${commentCount}.`);
+      add('Read-only explanation describes the input boundary', /空|边界|empty|boundary/iu.test(response.explanation), `Explanation: ${response.explanation}`);
+      add('Read-only explanation does not claim a completed full-diff workflow', !claimsCompletedFullDiffReview(response.explanation), `Explanation: ${response.explanation}`);
+      break;
     case 'read-only-code-review':
-      add('Read-only review does not rewrite code', response.code.trim() === definition.input_code.trim(), 'Compared the returned and input snippets.');
+      add('Read-only review does not rewrite code', normalizeSource(response.code) === normalizeSource(definition.input_code), 'Compared the returned and input snippets.');
       add('Read-only review reports no added comments', commentCount === 0 && response.comment_count === 0, `comment_count=${response.comment_count}; comments.length=${commentCount}.`);
       add('Read-only review explains the empty-input risk', /空|empty|zero|ZeroDivision|除零|len/iu.test(response.explanation), `Explanation: ${response.explanation}`);
-      add('Read-only review does not claim a completed full-diff workflow', !/(已|completed|performed).*(完整|complete|full|diff).*(审查|review)/isu.test(response.explanation), `Explanation: ${response.explanation}`);
+      add('Read-only review does not claim a completed full-diff workflow', !claimsCompletedFullDiffReview(response.explanation), `Explanation: ${response.explanation}`);
       break;
     case 'negated-strict-write':
-      add('Negated write request fixes the empty-input boundary', isStructurallyValid('python', response.code) && /^\s*if\s+not\s+values\s*:/mu.test(response.code) && /^\s*return\s+None\s*$/mu.test(response.code), 'Checked an empty-input None branch.');
+      add('Negated write request fixes the empty-input boundary', syntaxValid('python') && /^\s*if\s+not\s+values\s*:/mu.test(response.code) && /^\s*return\s+None\s*$/mu.test(response.code), syntaxEvidence);
       add('Negated line-by-line wording stays sparse', commentCount <= 1 && response.independently_commented_statement_count <= 1, `comments=${commentCount}; independent=${response.independently_commented_statement_count}.`);
       break;
     case 'preserve-existing-english': {
       const preserved = 'Keep retries bounded so callers receive a failure promptly.';
       add('Accurate English comment is preserved byte-for-byte', response.code.split(preserved).length - 1 === 1, 'Checked exact text and occurrence count.');
-      add('Code enforces the new attempts boundary', isStructurallyValid('python', response.code) && /attempts\s*<\s*1/u.test(response.code) && /raise\s+ValueError/u.test(response.code), 'Checked attempts < 1 and ValueError.');
+      add('Code enforces the new attempts boundary', syntaxValid('python') && /attempts\s*<\s*1/u.test(response.code) && /raise\s+ValueError/u.test(response.code), syntaxEvidence);
       break;
     }
     case 'replace-stale-comment':
       add('Stale English comment is removed', !response.code.includes('Empty input returns zero.'), 'Checked stale source text is absent.');
-      add('Updated code and comment describe the None boundary', isStructurallyValid('python', response.code) && /^\s*return\s+None\s*$/mu.test(response.code) && /空|None|无值/u.test(joinedComments), `Comment text: ${joinedComments}`);
+      add('Updated code and comment describe the None boundary', syntaxValid('python') && /^\s*return\s+None\s*$/mu.test(response.code) && /空|None|无值/u.test(joinedComments), `Comment text: ${joinedComments}; ${syntaxEvidence}`);
       break;
     case 'project-convention-english':
-      add('Nearest project convention produces one English line comment', isStructurallyValid('python', response.code) && commentCount === 1 && comments[0].kind === 'line' && /retry|attempt|bound|limit|budget/iu.test(joinedComments), `Comment text: ${joinedComments}`);
+      add('Nearest project convention produces one English line comment', syntaxValid('python') && commentCount === 1 && comments[0].kind === 'line' && /retry|attempt|bound|limit|budget/iu.test(joinedComments), `Comment text: ${joinedComments}; ${syntaxEvidence}`);
       break;
     case 'react-state-sync': {
       const visible = codeOnly('typescript', response.code).code;
@@ -353,7 +392,7 @@ export function gradeCase(definition, response) {
       const initialization = /auto\s+session\s*=\s*std::make_unique\s*<\s*Session\s*>\s*\(\s*\)\s*;/u.test(visible);
       const terminated = /session\s*->\s*start\s*\(\s*\)\s*;/u.test(visible) && /register_session\s*\(\s*std::move\s*\(\s*session\s*\)\s*\)\s*;/u.test(visible);
       const oneMove = (visible.match(/std::move\s*\(\s*session\s*\)/gu) ?? []).length === 1;
-      add('C++ uses the session before transferring ownership', Boolean(fn && isStructurallyValid('cpp', response.code) && initialization && terminated && oneMove && start && move && start.index < move.index && !/\bsession\b/u.test(postMove)), 'Checked create_session structure, one move, ordering, and no post-move access.');
+      add('C++ uses the session before transferring ownership', Boolean(fn && syntaxValid('cpp') && initialization && terminated && oneMove && start && move && start.index < move.index && !/\bsession\b/u.test(postMove)), `Checked create_session structure, one move, ordering, and no post-move access. ${syntaxEvidence}`);
       add('C++ comment records the ownership boundary', commentCount === 1 && /所有权|move|转移/u.test(joinedComments), `Comment text: ${joinedComments}`);
       break;
     }
@@ -376,6 +415,7 @@ export function gradeCase(definition, response) {
     }
     case 'strict-english-per-line': {
       const metrics = pythonMetrics(response.code);
+      metrics.structurallyValid = syntaxValid('python');
       add('Returned Python contains exactly five standalone comments', metrics.structurallyValid && metrics.standaloneComments === 5 && commentCount === 5, `Structure valid=${metrics.structurallyValid}; code=${metrics.standaloneComments}; reported=${commentCount}.`);
       add('STRICT independently covers all five executable statements', metrics.executableStatements === 5 && metrics.independentlyCommentedStatements === 5 && response.independently_commented_statement_count === 5, `Executable=${metrics.executableStatements}; independent=${metrics.independentlyCommentedStatements}.`);
       add('STRICT reports the parsed executable-statement count', metrics.executableStatements === response.executable_statement_count, `Parsed=${metrics.executableStatements}; reported=${response.executable_statement_count}.`);

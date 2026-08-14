@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,34 +7,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gradeCase } from './grader.js';
 import { selectRunner } from './agents/index.js';
 import { runProcess } from './process.js';
+import { validateCaseSyntax } from './syntax.js';
 
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 const behaviorCasesPath = path.join(repositoryRoot, 'tests', 'behavior-cases.json');
 const evalsPath = path.join(repositoryRoot, 'evals', 'evals.json');
 
-export const DEFAULT_CASE_IDS = Object.freeze([
-  'java-high-value-write',
-  'c-buffer-fix',
-  'japanese-method-doc',
-  'grouped-line-comments',
-  'english-grouped-line-comments',
-  'japanese-grouped-line-comments',
-  'strict-english-per-line',
-  'json-no-comments',
-  'read-only-code-review',
-  'negated-strict-write',
-  'preserve-existing-english',
-  'replace-stale-comment',
-  'french-method-doc',
-  'project-convention-english',
-  'react-state-sync',
-  'self-explanatory-write',
-  'cpp-ownership-transfer',
-  'sql-partial-unique-index',
-  'terraform-rolling-availability',
-]);
-
-const EVAL_ID_BY_CASE_ID = new Map(DEFAULT_CASE_IDS.map((id, index) => [id, index + 1]));
+const evalCatalog = JSON.parse(readFileSync(evalsPath, 'utf8'));
+export const DEFAULT_CASE_IDS = Object.freeze(
+  evalCatalog.evals.map((definition) => definition.case_id).sort(),
+);
+const DEFAULT_CASE_ID_SET = new Set(DEFAULT_CASE_IDS);
 const ENGLISH_PROJECT_RULE_CASES = new Set(['project-convention-english', 'french-method-doc']);
 
 function optionValue(argv, index, option) {
@@ -168,7 +152,7 @@ function failureGrading(caseId, error) {
 function selectedCaseIds(caseIds) {
   const selected = caseIds == null ? [...DEFAULT_CASE_IDS] : [...new Set(caseIds)];
   for (const id of selected) {
-    if (!EVAL_ID_BY_CASE_ID.has(id)) throw new Error(`Unknown behavior eval case: ${id}`);
+    if (!DEFAULT_CASE_ID_SET.has(id)) throw new Error(`Unknown behavior eval case: ${id}`);
   }
   return selected;
 }
@@ -197,14 +181,14 @@ export async function runBehaviorEval({
   const behaviorCases = await readJson(behaviorCasesPath);
   const evalDocument = await readJson(evalsPath);
   const behaviorById = new Map(behaviorCases.map((definition) => [definition.id, definition]));
-  const evalById = new Map(evalDocument.evals.map((definition) => [definition.id, definition]));
+  const evalById = new Map(evalDocument.evals.map((definition) => [definition.case_id, definition]));
   const outputRoot = await createResultsRoot(resultsRoot, runner.id);
 
   const cases = [];
   let infrastructureError = null;
   for (const caseId of selected) {
     const caseDefinition = behaviorById.get(caseId);
-    const evalDefinition = evalById.get(EVAL_ID_BY_CASE_ID.get(caseId));
+    const evalDefinition = evalById.get(caseId);
     if (!caseDefinition || !evalDefinition) throw new Error(`Missing behavior definition for case: ${caseId}`);
     const caseRoot = path.join(outputRoot, caseId);
     const workspaceRoot = path.join(caseRoot, 'workspace');
@@ -232,9 +216,15 @@ export async function runBehaviorEval({
       infrastructurePhase = false;
       const response = JSON.parse(finalText.trim());
       await writeJson(responsePath, response);
-      grading = gradeCase(caseDefinition, response);
+      const syntaxResult = await validateCaseSyntax(caseDefinition, response.code, { timeoutMs });
+      if (syntaxResult && syntaxResult.tool === null) {
+        const error = new Error(`Syntax-validation infrastructure is unavailable: ${syntaxResult.error}`);
+        error.infrastructure = true;
+        throw error;
+      }
+      grading = gradeCase(caseDefinition, response, { syntaxResult });
     } catch (error) {
-      if (infrastructurePhase || error?.result) {
+      if (infrastructurePhase || error?.result || error?.infrastructure) {
         processResult = error.result;
         infrastructureError = error;
       }

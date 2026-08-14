@@ -1,5 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -75,6 +86,66 @@ test('preflight rejects a file ancestor without creating siblings', async (t) =>
     /Path ancestor must be a directory/,
   );
   assert.deepEqual(await snapshot(root), before);
+});
+
+test('replacing an existing file preserves its POSIX mode', {
+  skip: process.platform === 'win32',
+}, async (t) => {
+  const root = await fixture(t, { 'config.txt': 'old' });
+  const target = path.join(root, 'config.txt');
+  await chmod(target, 0o751);
+
+  await executeTransaction([
+    { target, content: Buffer.from('new'), kind: 'policy' },
+  ]);
+
+  assert.equal((await stat(target)).mode & 0o777, 0o751);
+});
+
+test('a transaction can write through a linked configuration directory', async (t) => {
+  const root = await fixture(t);
+  const realDirectory = path.join(root, 'real-config');
+  const linkedDirectory = path.join(root, 'config');
+  await mkdir(realDirectory);
+  await symlink(
+    realDirectory,
+    linkedDirectory,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+
+  await executeTransaction([
+    {
+      target: path.join(linkedDirectory, 'policy.md'),
+      content: Buffer.from('managed policy'),
+      kind: 'policy',
+    },
+  ]);
+
+  assert.equal(await readFile(path.join(realDirectory, 'policy.md'), 'utf8'), 'managed policy');
+});
+
+test('preflight rejects a symlink target without changing its destination', async (t) => {
+  const root = await fixture(t, { 'real.txt': 'original' });
+  const destination = path.join(root, 'real.txt');
+  const target = path.join(root, 'linked.txt');
+  try {
+    await symlink(destination, target, 'file');
+  } catch (error) {
+    if (process.platform === 'win32' && error?.code === 'EPERM') {
+      t.skip('当前 Windows 环境不允许创建文件符号链接');
+      return;
+    }
+    throw error;
+  }
+
+  await assert.rejects(
+    executeTransaction([
+      { target, content: Buffer.from('replacement'), kind: 'policy' },
+    ]),
+    /Transaction target must be a file/,
+  );
+  assert.equal((await lstat(target)).isSymbolicLink(), true);
+  assert.equal(await readFile(destination, 'utf8'), 'original');
 });
 
 test('staging failure removes temporary files and newly created directories', async (t) => {

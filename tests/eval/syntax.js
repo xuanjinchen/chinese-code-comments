@@ -124,3 +124,159 @@ export function isStructurallyValid(language, code) {
   }
   return true;
 }
+
+const CASE_LANGUAGES = new Map([
+  ['java-high-value-write', 'java'],
+  ['japanese-method-doc', 'java'],
+  ['french-method-doc', 'java'],
+  ['c-buffer-fix', 'c'],
+  ['grouped-line-comments', 'python'],
+  ['english-grouped-line-comments', 'python'],
+  ['japanese-grouped-line-comments', 'python'],
+  ['strict-english-per-line', 'python'],
+  ['negated-strict-write', 'python'],
+  ['preserve-existing-english', 'python'],
+  ['replace-stale-comment', 'python'],
+  ['project-convention-english', 'python'],
+  ['cpp-ownership-transfer', 'cpp'],
+]);
+
+async function availableTool(candidates, env) {
+  for (const candidate of candidates) {
+    try {
+      await resolveCommand(candidate.command, env);
+      return candidate;
+    } catch (error) {
+      if (!String(error.message).startsWith('Command not found on PATH:')) throw error;
+    }
+  }
+  return null;
+}
+
+function diagnostic(error) {
+  return error?.result?.stderr?.trim()
+    || error?.result?.stdout?.trim()
+    || (error instanceof Error ? error.message : String(error));
+}
+
+async function runValidation(tool, { args, cwd, stdin, env, timeoutMs }) {
+  try {
+    await runProcess({
+      command: tool.command,
+      args: [...(tool.prefixArgs ?? []), ...args],
+      cwd,
+      stdin,
+      env,
+      timeoutMs,
+    });
+    return { valid: true, tool: tool.label, error: null };
+  } catch (error) {
+    return { valid: false, tool: tool.label, error: diagnostic(error) };
+  }
+}
+
+export async function validateSyntax(language, source, {
+  env = process.env,
+  timeoutMs = 30_000,
+} = {}) {
+  const normalized = ALIASES[String(language).toLowerCase()] ?? String(language).toLowerCase();
+  const candidates = normalized === 'python'
+    ? process.platform === 'win32'
+      ? [
+        { command: 'python', label: 'python' },
+        { command: 'py', prefixArgs: ['-3'], label: 'py -3' },
+        { command: 'python3', label: 'python3' },
+      ]
+      : [
+        { command: 'python3', label: 'python3' },
+        { command: 'python', label: 'python' },
+      ]
+    : normalized === 'java'
+      ? [{ command: 'javac', label: 'javac' }]
+      : normalized === 'c'
+        ? ['cc', 'gcc', 'clang'].map((command) => ({ command, label: command }))
+        : normalized === 'cpp'
+          ? ['c++', 'g++', 'clang++'].map((command) => ({ command, label: command }))
+          : [];
+  const tool = await availableTool(candidates, env);
+  if (!tool) {
+    return {
+      valid: false,
+      tool: null,
+      error: `Required ${normalized} parser or compiler was not found on PATH`,
+    };
+  }
+
+  if (normalized === 'python') {
+    return {
+      language: normalized,
+      ...await runValidation(tool, {
+        args: ['-c', 'import ast, sys; ast.parse(sys.stdin.read())'],
+        cwd: process.cwd(),
+        stdin: source,
+        env,
+        timeoutMs,
+      }),
+    };
+  }
+
+  const workspace = await mkdtemp(path.join(tmpdir(), `chinese-code-comments-${normalized}-syntax-`));
+  try {
+    const extension = { java: '.java', c: '.c', cpp: '.cpp' }[normalized];
+    const publicJavaType = normalized === 'java'
+      ? source.match(/\bpublic\s+(?:(?:final|abstract|sealed|non-sealed)\s+)*(?:class|interface|enum|record)\s+(?<name>[A-Za-z_]\w*)/u)?.groups.name
+      : null;
+    const sourcePath = path.join(workspace, `${publicJavaType ?? 'EvalSource'}${extension}`);
+    await writeFile(sourcePath, source, 'utf8');
+    const args = normalized === 'java'
+      ? ['-proc:none', '-d', workspace, sourcePath]
+      : normalized === 'c'
+        ? ['-x', 'c', '-fsyntax-only', sourcePath]
+        : ['-x', 'c++', '-std=c++17', '-fsyntax-only', sourcePath];
+    return {
+      language: normalized,
+      ...await runValidation(tool, { args, cwd: workspace, stdin: null, env, timeoutMs }),
+    };
+  } finally {
+    // 编译器只验证 Agent 返回源码，临时产物不进入评测工作区或最终证据。
+    await rm(workspace, { recursive: true, force: true });
+  }
+}
+
+function sourceForCase(caseId, language, code) {
+  if (caseId === 'java-high-value-write') {
+    return `import java.math.BigDecimal;\n${code}\n`
+      + 'interface LedgerRepository { void save(LedgerEntry entry); }\n'
+      + 'record LedgerEntry(String eventId, BigDecimal amount) {}\n'
+      + 'class DuplicateKeyException extends RuntimeException {}\n';
+  }
+  if (caseId === 'japanese-method-doc' || caseId === 'french-method-doc') {
+    return 'import java.util.Optional;\n'
+      + `final class EvalSource {\n  private Repository repository;\n${code}\n}\n`
+      + 'interface Repository { Optional<Receipt> findById(String id); }\n'
+      + 'final class Receipt {}\n'
+      + 'final class ReceiptNotFoundException extends RuntimeException { ReceiptNotFoundException(String id) {} }\n';
+  }
+  if (language === 'c') {
+    return '#include <stddef.h>\ntypedef long ssize_t;\n'
+      + 'void *malloc(size_t);\nvoid free(void *);\nssize_t recv(int, void *, size_t, int);\n'
+      + code;
+  }
+  if (language === 'cpp') {
+    return '#include <memory>\nclass Session { public: void start(); };\n'
+      + 'void register_session(std::unique_ptr<Session>);\n'
+      + code;
+  }
+  return code;
+}
+
+export async function validateCaseSyntax(definition, code, options) {
+  const language = CASE_LANGUAGES.get(definition.id);
+  if (!language) return null;
+  return validateSyntax(language, sourceForCase(definition.id, language, code), options);
+}
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+import { resolveCommand, runProcess } from './process.js';

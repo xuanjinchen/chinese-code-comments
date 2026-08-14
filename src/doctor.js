@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
@@ -6,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { selectAdapters } from './adapters/index.js';
 import { removeManagedBlock, upsertManagedBlock } from './files/managed-block.js';
 import { decodeText } from './files/text.js';
+import { withInstallerLock } from './installer-lock.js';
 import { renderPolicy } from './policies/render.js';
 import { readState } from './state.js';
 
@@ -43,7 +45,33 @@ function addCheck(checks, agent, subject, status, target, message) {
   checks.push({ agent, subject, status, path: target, message });
 }
 
-export async function doctor({ agents, context, sourceRoot = DEFAULT_SOURCE_ROOT }) {
+function digest(bytes) {
+  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+}
+
+function samePath(left, right) {
+  const normalize = (value) => process.platform === 'win32'
+    ? path.resolve(value).toLowerCase()
+    : path.resolve(value);
+  return normalize(left) === normalize(right);
+}
+
+async function v2StateIsCurrent(state, adapter, context) {
+  const group = state.storageGroups[adapter.storageGroup];
+  const policy = state.policies[adapter.id];
+  if (!group || !policy
+    || !samePath(group.root, adapter.skillRoot(context))
+    || !samePath(policy.path, adapter.policyFile(context))) {
+    return false;
+  }
+  for (const record of [...group.files, policy]) {
+    const current = await readFileOrNull(record.path);
+    if (!current || digest(current) !== record.digest) return false;
+  }
+  return true;
+}
+
+async function doctorUnlocked({ agents, context, sourceRoot }) {
   const selected = selectAdapters(agents, context);
   const checks = [];
   const expectedSkill = await readFile(path.join(sourceRoot, 'SKILL.md'));
@@ -102,10 +130,22 @@ export async function doctor({ agents, context, sourceRoot = DEFAULT_SOURCE_ROOT
         && state.installerVersion === null
         && Boolean(skill)
         && policyManaged;
-      const members = state.storageGroups[adapter.storageGroup] ?? [];
+      const groupRecord = state.storageGroups[adapter.storageGroup];
+      const members = state.schemaVersion === 2
+        ? groupRecord?.members ?? []
+        : groupRecord ?? [];
+      const externalFiles = state.schemaVersion === 2
+        ? groupRecord?.files.filter((file) => !file.owned) ?? []
+        : [];
+      const stateFilesCurrent = state.schemaVersion === 2 && state.installerVersion !== null
+        ? await v2StateIsCurrent(state, adapter, context)
+        : true;
       const valid = state.installerVersion === packageMetadata.version
+        && state.schemaVersion === 2
         && state.agents.includes(adapter.id)
-        && members.includes(adapter.id);
+        && members.includes(adapter.id)
+        && stateFilesCurrent
+        && externalFiles.length === 0;
       addCheck(
         checks,
         adapter.id,
@@ -114,7 +154,13 @@ export async function doctor({ agents, context, sourceRoot = DEFAULT_SOURCE_ROOT
         '',
         valid
           ? 'Installation state is consistent'
-          : legacyPowerShellLayout
+          : externalFiles.length > 0
+            ? 'Installation state references external file ownership'
+            : !stateFilesCurrent
+              ? 'Installation state paths or content digests have drifted'
+            : state.schemaVersion === 1
+              ? 'Installation state uses schema v1; run install to migrate'
+            : legacyPowerShellLayout
             ? 'Legacy PowerShell installation detected; run install --agent codex to migrate'
             : 'Installation state does not reference this adapter',
       );
@@ -135,4 +181,8 @@ export async function doctor({ agents, context, sourceRoot = DEFAULT_SOURCE_ROOT
     healthy: checks.every((check) => check.status === 'ok'),
     checks,
   };
+}
+
+export async function doctor({ agents, context, sourceRoot = DEFAULT_SOURCE_ROOT }) {
+  return withInstallerLock(context, () => doctorUnlocked({ agents, context, sourceRoot }));
 }

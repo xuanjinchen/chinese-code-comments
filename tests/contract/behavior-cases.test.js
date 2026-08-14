@@ -5,11 +5,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractComments } from '../eval/comments.js';
 import { gradeCase } from '../eval/grader.js';
+import { DEFAULT_CASE_IDS } from '../eval/run.js';
 import { validateResponse } from '../eval/schema.js';
-import { isStructurallyValid } from '../eval/syntax.js';
+import { isStructurallyValid, validateCaseSyntax, validateSyntax } from '../eval/syntax.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const cases = JSON.parse(readFileSync(resolve(repoRoot, 'tests', 'behavior-cases.json'), 'utf8'));
+const evalDocument = JSON.parse(readFileSync(resolve(repoRoot, 'evals', 'evals.json'), 'utf8'));
 const schema = JSON.parse(readFileSync(resolve(repoRoot, 'tests', 'behavior-eval-output.schema.json'), 'utf8'));
 const casesById = new Map(cases.map((definition) => [definition.id, definition]));
 
@@ -40,6 +42,23 @@ test('行为目录保留 20 条定义和 19 条 deterministic grader 案例', ()
   assert.equal(cases.length, 20);
   assert.equal(cases.filter(({ id }) => id !== 'read-only-explanation').length, 19);
   assert.equal(new Set(cases.map(({ id }) => id)).size, cases.length);
+});
+
+test('eval 目录使用唯一字符串 case_id 与行为目录完整关联', () => {
+  const evalCaseIds = evalDocument.evals.map(({ case_id: caseId }) => caseId);
+  for (const caseId of evalCaseIds) {
+    assert.equal(typeof caseId, 'string');
+    assert.ok(caseId.trim());
+  }
+
+  assert.equal(new Set(evalCaseIds).size, evalCaseIds.length);
+  assert.deepEqual([...evalCaseIds].sort(), cases.map(({ id }) => id).sort());
+});
+
+test('默认 eval 目录覆盖全部显式 case_id 并包含只读解释案例', () => {
+  const evalCaseIds = evalDocument.evals.map(({ case_id: caseId }) => caseId);
+  assert.deepEqual(DEFAULT_CASE_IDS, [...evalCaseIds].sort());
+  assert.ok(DEFAULT_CASE_IDS.includes('read-only-explanation'));
 });
 
 test('每条行为定义都保留必填字段和字段类型', () => {
@@ -272,6 +291,45 @@ validResponses.set('read-only-code-review', makeResponse('read-only-code-review'
   explanation: '空输入会使 len(values) 为零并触发除零错误。', executable: 1,
 }));
 
+test('只读解释案例进入 grader 且不触发写入注释流程', () => {
+  const definition = casesById.get('read-only-explanation');
+  assert.ok(definition.input_code?.trim());
+  const response = makeResponse('read-only-explanation', {
+    code: definition.input_code,
+    explanation: '该函数先处理输入边界，再执行主要计算。',
+    executable: 1,
+  });
+  const result = gradeCase(definition, response);
+
+  assert.equal(result.passed, true, JSON.stringify(result.checks.filter((check) => !check.passed), null, 2));
+  assert.ok(result.checks.some((check) => check.name === 'Read-only explanation does not rewrite code' && check.passed));
+  assert.ok(result.checks.some((check) => check.name === 'Read-only explanation reports no added comments' && check.passed));
+});
+
+test('只读解释忽略源码换行符差异', () => {
+  const definition = casesById.get('read-only-explanation');
+  const response = makeResponse('read-only-explanation', {
+    code: definition.input_code.replaceAll('\n', '\r\n'),
+    explanation: '该函数先处理空输入边界，再执行主要计算。',
+    executable: 1,
+  });
+
+  assert.equal(gradeCase(definition, response).passed, true);
+});
+
+test('只读解释拒绝任意词序的完整 diff 审查完成声明', () => {
+  const definition = casesById.get('read-only-explanation');
+  const response = makeResponse('read-only-explanation', {
+    code: definition.input_code,
+    explanation: '空输入属于边界。完整 diff 注释审查已完成。',
+    executable: 1,
+  });
+  const result = gradeCase(definition, response);
+
+  assert.equal(result.passed, false);
+  assert.ok(result.checks.some((check) => check.name === 'Read-only explanation does not claim a completed full-diff workflow' && !check.passed));
+});
+
 validResponses.set('negated-strict-write', makeResponse('negated-strict-write', {
   code: 'def average(values):\n    if not values:\n        return None\n    return sum(values) / len(values)', executable: 3,
 }));
@@ -370,10 +428,46 @@ cMismatchedCapacity.code = cMismatchedCapacity.code
 expectRejected('C 命名容量与 recv 上限不一致', 'c-buffer-fix', cMismatchedCapacity,
   'Code reserves room for the string terminator');
 
+test('C 接收上限超过分配容量时拒绝结果', () => {
+  const response = structuredClone(validResponses.get('c-buffer-fix'));
+  response.code = response.code.replace('recv(fd, buffer, 1024, 0)', 'recv(fd, buffer, 2048, 0)');
+  const result = gradeCase(casesById.get('c-buffer-fix'), response);
+
+  assert.equal(result.passed, false);
+  assert.ok(result.checks.some((check) => check.name === 'Code reserves room for the string terminator' && !check.passed));
+});
+
+test('C 终止符写入必须使用实际接收长度', () => {
+  const response = structuredClone(validResponses.get('c-buffer-fix'));
+  response.code = response.code.replace("buffer[count] = '\\0';", "buffer[2048] = '\\0';");
+  const result = gradeCase(casesById.get('c-buffer-fix'), response);
+
+  assert.equal(result.passed, false);
+  assert.ok(result.checks.some((check) => check.name === 'Code reserves room for the string terminator' && !check.passed));
+});
+
 const invalidGrouped = structuredClone(validResponses.get('grouped-line-comments'));
 invalidGrouped.code = invalidGrouped.code.replace('total = sum(values)', 'total = sum(values');
 expectRejected('Python 结构无效', 'grouped-line-comments', invalidGrouped,
   'Standalone Python comment count matches the report');
+
+test('非法但括号平衡的 Python 语法拒绝结果', async () => {
+  const response = structuredClone(validResponses.get('grouped-line-comments'));
+  response.code = response.code.replace('total = sum(values)', 'total = sum(values) +');
+  const definition = casesById.get('grouped-line-comments');
+  const syntaxResult = await validateCaseSyntax(definition, response.code);
+  const result = gradeCase(definition, response, { syntaxResult });
+
+  assert.equal(syntaxResult.valid, false);
+  assert.match(syntaxResult.tool, /python|py/iu);
+  assert.equal(result.passed, false);
+  assert.ok(result.checks.some((check) => check.name === 'Returned Python passes syntax validation' && !check.passed));
+});
+
+test('Java 真实语法验证支持公开顶层类型', async () => {
+  const result = await validateSyntax('java', 'public final class PublicEvalType {}');
+  assert.equal(result.valid, true, result.error);
+});
 
 for (const [label, code] of [
   ['JSON 删除无关字段', '{"feature":{"enabled":true}}'],

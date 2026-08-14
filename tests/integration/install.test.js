@@ -7,6 +7,7 @@ import test from 'node:test';
 import { main } from '../../src/cli.js';
 import { install } from '../../src/install.js';
 import { readState } from '../../src/state.js';
+import { uninstall } from '../../src/uninstall.js';
 import { createHomeFixture } from '../helpers/fs-fixture.js';
 
 const sourceRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -43,12 +44,113 @@ test('selected shared adapters create one Skill copy and only selected policies'
   assert.equal(await fixture.exists('.codex/AGENTS.md'), true);
   assert.equal(await fixture.exists('.gemini/GEMINI.md'), true);
   assert.equal(await fixture.exists('.grok/AGENTS.md'), false);
-  assert.deepEqual(await readState(fixture.context), {
+  const state = await readState(fixture.context);
+  assert.equal(state.schemaVersion, 2);
+  assert.deepEqual(state.agents, ['codex', 'gemini']);
+  assert.deepEqual(state.storageGroups.agents.members, ['codex', 'gemini']);
+  assert.equal(state.storageGroups.agents.root, fixture.path('.agents/skills'));
+  assert.equal(state.storageGroups.agents.files.every((file) => path.isAbsolute(file.path)), true);
+  assert.equal(state.storageGroups.agents.files.every((file) => /^sha256:[a-f0-9]{64}$/.test(file.digest)), true);
+});
+
+test('concurrent installs serialize state updates instead of losing an adapter', async (t) => {
+  const fixture = await createHomeFixture(t);
+
+  await Promise.all([
+    install({ agents: ['codex'], context: fixture.context, sourceRoot }),
+    install({ agents: ['claude'], context: fixture.context, sourceRoot }),
+  ]);
+
+  assert.deepEqual((await readState(fixture.context)).agents, ['codex', 'claude']);
+});
+
+test('an existing identical Skill remains externally owned', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await fixture.write(
+    '.claude/skills/chinese-code-comments/SKILL.md',
+    await readFile(path.join(sourceRoot, 'SKILL.md')),
+  );
+
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  const group = (await readState(fixture.context)).storageGroups.claude;
+  const skill = group.files.find((file) => file.path.endsWith('SKILL.md'));
+  assert.equal(skill.owned, false);
+});
+
+test('install migrates a valid v1 state to owned schema v2 records', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  await fixture.write('.chinese-code-comments/state.json', `${JSON.stringify({
     schemaVersion: 1,
     installerVersion: '0.1.0',
-    agents: ['codex', 'gemini'],
-    storageGroups: { agents: ['codex', 'gemini'] },
-  });
+    agents: ['claude'],
+    storageGroups: { claude: ['claude'] },
+  })}\n`);
+
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  const state = await readState(fixture.context);
+  assert.equal(state.schemaVersion, 2);
+  assert.equal(state.storageGroups.claude.files.find((file) => file.path.endsWith('SKILL.md')).owned, true);
+});
+
+test('v1 state does not authorize overwriting a Skill at a changed config root', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  await fixture.write('.chinese-code-comments/state.json', `${JSON.stringify({
+    schemaVersion: 1,
+    installerVersion: '0.1.0',
+    agents: ['claude'],
+    storageGroups: { claude: ['claude'] },
+  })}\n`);
+  const changedRoot = fixture.path('other-claude-home');
+  await fixture.write('other-claude-home/skills/chinese-code-comments/SKILL.md', 'external\n');
+
+  await assert.rejects(
+    install({
+      agents: ['claude'],
+      context: { ...fixture.context, env: { CLAUDE_CONFIG_DIR: changedRoot } },
+      sourceRoot,
+    }),
+    /not owned by this installer/,
+  );
+  assert.equal(await fixture.read('other-claude-home/skills/chinese-code-comments/SKILL.md'), 'external\n');
+});
+
+test('v1 migration does not own absent files for an unselected adapter', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await fixture.write('.chinese-code-comments/state.json', `${JSON.stringify({
+    schemaVersion: 1,
+    installerVersion: '0.1.0',
+    agents: ['claude'],
+    storageGroups: { claude: ['claude'] },
+  })}\n`);
+
+  await install({ agents: ['codex'], context: fixture.context, sourceRoot });
+
+  const state = await readState(fixture.context);
+  assert.equal(state.storageGroups.claude.files.every((file) => file.owned === false), true);
+  assert.equal(state.policies.claude.owned, false);
+  await fixture.write(
+    '.claude/skills/chinese-code-comments/SKILL.md',
+    await readFile(path.join(sourceRoot, 'SKILL.md')),
+  );
+  await uninstall({ agents: ['claude'], context: fixture.context });
+  assert.equal(await fixture.exists('.claude/skills/chinese-code-comments/SKILL.md'), true);
+});
+
+test('install reclaims a lock whose owner process is provably dead', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await fixture.write(
+    '.chinese-code-comments/installer.lock/owner.json',
+    `${JSON.stringify({ pid: 2147483647, token: 'dead-owner' })}\n`,
+  );
+
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  assert.equal(await fixture.exists('.chinese-code-comments/installer.lock'), false);
+  assert.deepEqual((await readState(fixture.context)).agents, ['claude']);
 });
 
 test('repeated installation is byte-identical', async (t) => {

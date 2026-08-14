@@ -21,6 +21,7 @@ export function normalizeOutput(result) {
 
 export default {
   id: 'claude',
+  toolTrace: 'unavailable',
   aliases: ['claude-code'],
   projectRulesFile: 'CLAUDE.md',
   buildInvocation,

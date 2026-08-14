@@ -70,6 +70,70 @@ test('doctor detects state reference drift', async (t) => {
   assert.equal(statuses(result, 'state').includes('drift'), true);
 });
 
+test('doctor reports identical externally owned Skill content as ownership drift', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await fixture.write(
+    '.claude/skills/chinese-code-comments/SKILL.md',
+    await readFile(path.join(sourceRoot, 'SKILL.md')),
+  );
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  const result = await doctor({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  assert.equal(result.healthy, false);
+  const state = result.checks.find((check) => check.subject === 'state');
+  assert.equal(state.status, 'drift');
+  assert.match(state.message, /ownership|external/i);
+});
+
+test('doctor detects tampered state digests', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  const target = statePath(fixture.context);
+  const state = JSON.parse(await readFile(target, 'utf8'));
+  state.storageGroups.claude.files[0].digest = `sha256:${'0'.repeat(64)}`;
+  await writeFile(target, `${JSON.stringify(state)}\n`, 'utf8');
+
+  const result = await doctor({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  assert.equal(result.healthy, false);
+  assert.equal(statuses(result, 'state').includes('drift'), true);
+});
+
+test('doctor requires schema v1 installations to migrate before reporting healthy', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  await fixture.write('.chinese-code-comments/state.json', `${JSON.stringify({
+    schemaVersion: 1,
+    installerVersion: '0.1.0',
+    agents: ['claude'],
+    storageGroups: { claude: ['claude'] },
+  })}\n`);
+
+  const result = await doctor({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  assert.equal(result.healthy, false);
+  assert.match(result.checks.find((check) => check.subject === 'state').message, /schema v1|migrate/i);
+});
+
+test('doctor waits for the user-level installer lock', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  await fixture.write(
+    '.chinese-code-comments/installer.lock/owner.json',
+    `${JSON.stringify({ pid: process.pid, token: 'live-owner' })}\n`,
+  );
+  let completed = false;
+  const pending = doctor({ agents: ['claude'], context: fixture.context, sourceRoot })
+    .then(() => { completed = true; });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  const completedWhileLocked = completed;
+  await rm(fixture.path('.chinese-code-comments/installer.lock'), { recursive: true });
+  await pending;
+
+  assert.equal(completedWhileLocked, false);
+});
+
 test('doctor identifies a legacy PowerShell layout and gives the migration command', async (t) => {
   const fixture = await createHomeFixture(t);
   await fixture.write(

@@ -12,6 +12,7 @@ import {
   evaluateSmokeEvidence,
   parseSmokeArgs,
   runSmoke,
+  validateJavaRuntime,
 } from './smoke.js';
 import { createHomeFixture } from '../helpers/fs-fixture.js';
 
@@ -456,6 +457,85 @@ test('不暴露工具轨迹的 runner 使用无提示行为结果作为自动触
   assert.equal(result.policySkillEvidenceType, 'behavioral');
 });
 
+test('工具轨迹可用但缺少 Skill 读取时标记为 inconclusive', () => {
+  const { normalized, diff } = codexTrace();
+  const result = evaluateSmokeEvidence({
+    agent: 'claude',
+    toolTrace: 'available',
+    prompt: SMOKE_PROMPT,
+    beforeSource: originalSource,
+    afterSource: fixedSource,
+    diff,
+    finalText: normalized.finalText,
+    events: normalized.events.slice(1),
+    expectedSkillFiles: ['C:/Users/tester/.agents/skills/chinese-code-comments/SKILL.md'],
+    changedFiles: ['PaymentService.java'],
+  });
+
+  assert.equal(result.passed, false);
+  assert.equal(result.policySkillEvidence, false);
+  assert.equal(result.policySkillEvidenceType, 'inconclusive');
+});
+
+test('Gemini 原生工具事件可证明直接读取 Skill', () => {
+  const skillPath = 'C:/Users/tester/.agents/skills/chinese-code-comments/SKILL.md';
+  const { normalized, diff } = codexTrace();
+  const result = evaluateSmokeEvidence({
+    agent: 'gemini',
+    toolTrace: 'available',
+    prompt: SMOKE_PROMPT,
+    beforeSource: originalSource,
+    afterSource: fixedSource,
+    diff,
+    finalText: normalized.finalText,
+    events: [
+      { type: 'tool_use', tool_name: 'read_file', parameters: { path: skillPath } },
+      { type: 'tool_result', status: 'success', output: '---\nname: chinese-code-comments\ndescription: test\n---\n' },
+      ...normalized.events.slice(1),
+    ],
+    expectedSkillFiles: [skillPath],
+    changedFiles: ['PaymentService.java'],
+  });
+
+  assert.equal(result.policySkillEvidence, true);
+  assert.equal(result.policySkillEvidenceType, 'direct');
+});
+
+test('Gemini 失败的 Skill 读取不能作为直接证据', () => {
+  const skillPath = 'C:/Users/tester/.agents/skills/chinese-code-comments/SKILL.md';
+  const { normalized, diff } = codexTrace();
+  const result = evaluateSmokeEvidence({
+    agent: 'gemini',
+    toolTrace: 'available',
+    prompt: SMOKE_PROMPT,
+    beforeSource: originalSource,
+    afterSource: fixedSource,
+    diff,
+    finalText: normalized.finalText,
+    events: [
+      { type: 'tool_use', tool_name: 'read_file', parameters: { path: skillPath } },
+      { type: 'tool_result', status: 'error', output: '---\nname: chinese-code-comments\ndescription: stale output\n---\n' },
+      ...normalized.events.slice(1),
+    ],
+    expectedSkillFiles: [skillPath],
+    changedFiles: ['PaymentService.java'],
+  });
+
+  assert.equal(result.policySkillEvidence, false);
+  assert.equal(result.policySkillEvidenceType, 'inconclusive');
+});
+
+test('Java 编译失败返回 smoke 证据而不是抛出', async (t) => {
+  const outputRoot = await mkdtemp(path.join(tmpdir(), 'ccc-invalid-java-smoke-'));
+  t.after(() => rm(outputRoot, { recursive: true, force: true }));
+
+  const result = await validateJavaRuntime('final class PaymentService { broken', outputRoot, process.env, 30_000);
+
+  assert.equal(result.valid, false);
+  assert.equal(result.tool, 'javac/java');
+  assert.ok(result.error?.trim());
+});
+
 test('不暴露工具轨迹时仅报告注释审查不足以证明 Skill 已使用', () => {
   const { diff } = codexTrace();
   const result = evaluateSmokeEvidence({
@@ -550,6 +630,25 @@ test('行为证据拒绝否认 Skill 使用和完整审查的最终回复', () =
   assert.equal(result.passed, false);
   assert.equal(result.policySkillEvidence, false);
   assert.equal(result.finalReviewEvidence, false);
+});
+
+test('smoke 拒绝改名后的 Java process 方法', () => {
+  const renamedSource = fixedSource.replace('boolean process(String callbackId)', 'boolean handle(String callbackId)');
+  const { normalized, diff } = codexTrace(renamedSource);
+  const result = evaluateSmokeEvidence({
+    agent: 'codex',
+    toolTrace: 'available',
+    prompt: SMOKE_PROMPT,
+    beforeSource: originalSource,
+    afterSource: renamedSource,
+    diff,
+    finalText: normalized.finalText,
+    events: normalized.events,
+    expectedSkillFiles: ['C:/Users/tester/.agents/skills/chinese-code-comments/SKILL.md'],
+    changedFiles: ['PaymentService.java'],
+  });
+
+  assert.equal(result.passed, false);
 });
 
 test('smoke 入口强制显式选择一个 Agent', () => {

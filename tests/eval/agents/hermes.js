@@ -13,6 +13,7 @@ export function normalizeOutput(result) {
 
 export default {
   id: 'hermes',
+  toolTrace: 'unavailable',
   aliases: ['hermes-agent'],
   projectRulesFile: 'AGENTS.md',
   buildInvocation,

@@ -32,6 +32,7 @@ export function normalizeOutput(result) {
 
 export default {
   id: 'codex',
+  toolTrace: 'available',
   aliases: ['codex-cli'],
   projectRulesFile: 'AGENTS.md',
   buildInvocation,

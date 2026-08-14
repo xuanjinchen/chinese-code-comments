@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -59,22 +59,111 @@ test('partial uninstall with invalid state conservatively retains shared Skill f
   await uninstall({ agents: ['codex'], context: fixture.context });
 
   assert.equal(await fixture.exists('.agents/skills/chinese-code-comments/SKILL.md'), true);
-  assert.equal(await fixture.exists('.codex/AGENTS.md'), false);
+  assert.equal(await fixture.exists('.codex/AGENTS.md'), true);
   assert.equal(await fixture.exists('.gemini/GEMINI.md'), true);
   assert.equal(await fixture.read('.chinese-code-comments/state.json'), 'invalid');
 });
 
-test('full uninstall removes managed files even when state is invalid', async (t) => {
+test('full uninstall conservatively retains files when state is invalid', async (t) => {
   const fixture = await createHomeFixture(t);
   await install({ agents: null, context: fixture.context, sourceRoot });
   await fixture.write('.chinese-code-comments/state.json', 'invalid');
 
   await uninstall({ agents: null, context: fixture.context });
 
-  assert.equal(await fixture.exists('.agents/skills/chinese-code-comments/SKILL.md'), false);
+  assert.equal(await fixture.exists('.agents/skills/chinese-code-comments/SKILL.md'), true);
+  assert.equal(await fixture.exists('.claude/skills/chinese-code-comments/SKILL.md'), true);
+  assert.equal(await fixture.exists('.hermes/skills/chinese-code-comments/SKILL.md'), true);
+  assert.equal(await fixture.exists('.codex/AGENTS.md'), true);
+  assert.equal(await fixture.read('.chinese-code-comments/state.json'), 'invalid');
+});
+
+test('uninstall without state preserves a policy whose ownership cannot be proved', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['codex'], context: fixture.context, sourceRoot });
+  await rm(statePath(fixture.context));
+
+  const result = await uninstall({ agents: ['codex'], context: fixture.context });
+
+  assert.equal(await fixture.exists('.codex/AGENTS.md'), true);
+  assert.match(result.warnings.join('\n'), /state|ownership/i);
+});
+
+test('full uninstall without state preserves an independently installed Skill', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await fixture.write(
+    '.agents/skills/chinese-code-comments/SKILL.md',
+    await readFile(path.join(sourceRoot, 'SKILL.md')),
+  );
+
+  const result = await uninstall({ agents: null, context: fixture.context });
+
+  assert.equal(await fixture.exists('.agents/skills/chinese-code-comments/SKILL.md'), true);
+  assert.match(result.warnings.join('\n'), /state|ownership/i);
+});
+
+test('full uninstall warns for every untracked shared policy and metadata file', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await fixture.write('.gemini/GEMINI.md', 'external policy\n');
+  await fixture.write('.agents/skills/chinese-code-comments/agents/openai.yaml', 'external metadata\n');
+
+  const result = await uninstall({ agents: null, context: fixture.context });
+
+  assert.equal(await fixture.exists('.gemini/GEMINI.md'), true);
+  assert.equal(await fixture.exists('.agents/skills/chinese-code-comments/agents/openai.yaml'), true);
+  assert.match(result.warnings.join('\n'), /GEMINI\.md/u);
+  assert.match(result.warnings.join('\n'), /openai\.yaml/u);
+});
+
+test('uninstall uses recorded paths and preserves same-name files at a changed root', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  const changedRoot = fixture.path('other-claude-home');
+  await fixture.write(
+    'other-claude-home/skills/chinese-code-comments/SKILL.md',
+    'managed elsewhere\n',
+  );
+
+  const result = await uninstall({
+    agents: ['claude'],
+    context: { ...fixture.context, env: { CLAUDE_CONFIG_DIR: changedRoot } },
+  });
+
   assert.equal(await fixture.exists('.claude/skills/chinese-code-comments/SKILL.md'), false);
-  assert.equal(await fixture.exists('.hermes/skills/chinese-code-comments/SKILL.md'), false);
-  assert.equal(await fixture.exists('.chinese-code-comments/state.json'), false);
+  assert.equal(await fixture.exists('.claude/CLAUDE.md'), false);
+  assert.equal(
+    await fixture.read('other-claude-home/skills/chinese-code-comments/SKILL.md'),
+    'managed elsewhere\n',
+  );
+  assert.match(result.warnings.join('\n'), /root|path|config/i);
+});
+
+test('uninstall retains owned files whose content drifted and emits a warning', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  await fixture.write('.claude/skills/chinese-code-comments/SKILL.md', 'user-modified\n');
+
+  const result = await uninstall({ agents: ['claude'], context: fixture.context });
+
+  assert.equal(
+    await fixture.read('.claude/skills/chinese-code-comments/SKILL.md'),
+    'user-modified\n',
+  );
+  assert.match(result.warnings.join('\n'), /drift|modified/i);
+});
+
+test('uninstall retains an identical Skill that install recorded as external', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await fixture.write(
+    '.claude/skills/chinese-code-comments/SKILL.md',
+    await readFile(path.join(sourceRoot, 'SKILL.md')),
+  );
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  const result = await uninstall({ agents: ['claude'], context: fixture.context });
+
+  assert.equal(await fixture.exists('.claude/skills/chinese-code-comments/SKILL.md'), true);
+  assert.match(result.warnings.join('\n'), /external|ownership/i);
 });
 
 test('uninstalling an adapter absent from state preserves an independently managed Skill', async (t) => {

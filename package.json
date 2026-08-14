@@ -2,7 +2,29 @@
   "name": "chinese-code-comments",
   "version": "0.1.0",
   "description": "Install automatic, concise code-comment rules for coding agents.",
+  "keywords": [
+    "agent-skill",
+    "code-comments",
+    "codex",
+    "claude-code",
+    "gemini-cli"
+  ],
+  "homepage": "https://github.com/xuanjinchen/chinese-code-comments#readme",
+  "bugs": {
+    "url": "https://github.com/xuanjinchen/chinese-code-comments/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xuanjinchen/chinese-code-comments.git"
+  },
   "type": "module",
+  "files": [
+    "agents",
+    "bin",
+    "resources",
+    "src",
+    "SKILL.md"
+  ],
   "bin": {
     "chinese-code-comments": "./bin/chinese-code-comments.js"
   },

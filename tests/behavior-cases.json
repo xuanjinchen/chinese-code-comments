@@ -116,6 +116,7 @@
   {
     "id": "read-only-explanation",
     "prompt": "解释这段函数为什么这样写，不修改文件。",
+    "input_code": "def average(values):\n    if not values:\n        return None\n    return sum(values) / len(values)",
     "should_invoke": false,
     "expected_language": "zh-CN",
     "expected_granularity": "none",
