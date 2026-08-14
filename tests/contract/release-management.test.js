@@ -40,13 +40,15 @@ test('CHANGELOG 记录当前正式版本的发布信息', async () => {
 test('发布脚本生成 tarball 和匹配的 SHA-256', async (t) => {
   const outputRoot = await mkdtemp(path.join(tmpdir(), 'ccc-release-'));
   t.after(() => rm(outputRoot, { recursive: true, force: true }));
+  const packageJson = await readJson('package.json');
+  const expectedTarball = `${packageJson.name}-${packageJson.version}.tgz`;
   const { buildReleaseArtifacts } = await import('../../scripts/release-pack.js');
 
   const result = await buildReleaseArtifacts({ outputRoot });
   const tarball = await readFile(result.tarballPath);
   const expectedDigest = createHash('sha256').update(tarball).digest('hex');
 
-  assert.equal(path.basename(result.tarballPath), 'chinese-code-comments-0.1.0.tgz');
+  assert.equal(path.basename(result.tarballPath), expectedTarball);
   assert.equal(result.digest, expectedDigest);
   assert.equal(
     await readFile(result.checksumPath, 'utf8'),
