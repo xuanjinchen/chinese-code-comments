@@ -64,7 +64,8 @@ async function v2StateIsCurrent(state, adapter, context) {
     || !samePath(policy.path, adapter.policyFile(context))) {
     return false;
   }
-  for (const record of [...group.files, policy]) {
+  // 策略内容已按托管块单独校验；整文件摘要变化可能只是用户修改了块外规则。
+  for (const record of group.files) {
     const current = await readFileOrNull(record.path);
     if (!current || digest(current) !== record.digest) return false;
   }

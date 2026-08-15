@@ -152,6 +152,31 @@ test('uninstall retains owned files whose content drifted and emits a warning', 
   assert.match(result.warnings.join('\n'), /drift|modified/i);
 });
 
+test('uninstall removes the managed policy block after user-owned text changes', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  const policy = await fixture.read('.claude/CLAUDE.md');
+  await fixture.write('.claude/CLAUDE.md', `${policy}# user-owned rule\n`);
+
+  await uninstall({ agents: ['claude'], context: fixture.context });
+
+  const remaining = await fixture.read('.claude/CLAUDE.md');
+  assert.match(remaining, /# user-owned rule/u);
+  assert.doesNotMatch(remaining, /chinese-code-comments/u);
+  assert.equal(await fixture.exists('.chinese-code-comments/state.json'), false);
+});
+
+test('uninstall retains ownership state when a managed policy cannot be decoded', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  await fixture.write('.claude/CLAUDE.md', Buffer.from([0xff, 0xfe, 0x41, 0x00]));
+
+  const result = await uninstall({ agents: ['claude'], context: fixture.context });
+
+  assert.match(result.warnings.join('\n'), /unreadable|UTF-16/i);
+  assert.deepEqual((await readState(fixture.context)).agents, ['claude']);
+});
+
 test('uninstall retains an identical Skill that install recorded as external', async (t) => {
   const fixture = await createHomeFixture(t);
   await fixture.write(

@@ -57,6 +57,25 @@ test('发布脚本生成 tarball 和匹配的 SHA-256', async (t) => {
   );
 });
 
+test('Windows 发布打包直接调用 npm CLI 而不经过命令解释器', async () => {
+  const { npmInvocation } = await import('../../scripts/release-pack.js');
+  const nodeExecutable = 'C:\\Program Files\\nodejs\\node.exe';
+  const npmCliPath = 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
+  const outputRoot = 'C:\\release & verification';
+
+  const invocation = npmInvocation(outputRoot, {
+    platform: 'win32',
+    nodeExecutable,
+    npmCliPath,
+  });
+
+  assert.deepEqual(invocation, {
+    command: nodeExecutable,
+    args: [npmCliPath, 'pack', '--ignore-scripts', '--json', '--pack-destination', outputRoot],
+  });
+  assert.equal(invocation.args.includes('/c'), false);
+});
+
 test('发布脚本拒绝清理仓库根目录', async () => {
   const { buildReleaseArtifacts } = await import('../../scripts/release-pack.js');
 
@@ -92,18 +111,18 @@ test('Release 工作流幂等创建版本并上传两个资产', async () => {
   assert.match(workflow, /issues:\s*write/u);
   assert.match(workflow, /group:\s*release-\$\{\{ github\.repository \}\}/u);
   assert.match(workflow, /cancel-in-progress:\s*false/u);
-  assert.match(workflow, /actions\/github-script@[0-9a-f]{40}\s+# v7/u);
+  assert.match(workflow, /actions\/github-script@[0-9a-f]{40}\s+# v9/u);
   assert.match(workflow, /refs\/tags\/v0\.1\.0/u);
   assert.match(workflow, /getReleaseByTag/u);
   assert.match(workflow, /release_tag/u);
-  assert.match(workflow, /googleapis\/release-please-action@[0-9a-f]{40}\s+# v4/u);
+  assert.match(workflow, /googleapis\/release-please-action@[0-9a-f]{40}\s+# v5/u);
   assert.match(workflow, /config-file:\s*release-please-config\.json/u);
   assert.match(workflow, /manifest-file:\s*\.release-please-manifest\.json/u);
   assert.doesNotMatch(workflow, /^\s+release-type:/mu);
   assert.match(workflow, /RELEASE_PLEASE_TOKEN/u);
   assert.match(workflow, /github\.token/u);
   assert.match(workflow, /npm run release:pack/u);
-  assert.match(workflow, /softprops\/action-gh-release@[0-9a-f]{40}\s+# v2/u);
+  assert.match(workflow, /softprops\/action-gh-release@[0-9a-f]{40}\s+# v3/u);
   assert.match(workflow, /steps\.release\.outputs\.tag_name/u);
   assert.match(workflow, /source_ref', `refs\/tags\/\$\{tagName\}`/u);
   assert.match(

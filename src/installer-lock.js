@@ -58,6 +58,26 @@ async function delay(milliseconds) {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+async function publishInstallerLock(target, token, fault) {
+  const candidate = `${target}.candidate.${token}`;
+  await mkdir(candidate);
+  try {
+    await writeFile(
+      path.join(candidate, 'owner.json'),
+      `${JSON.stringify({ pid: process.pid, token })}\n`,
+      { flag: 'wx' },
+    );
+    if (fault?.phase === 'before-publish') {
+      throw new Error('Injected installer lock failure before publish');
+    }
+    // 先写完整所有者再原子发布目录，进程崩溃不会留下可见的无所有者锁。
+    await rename(candidate, target);
+  } catch (error) {
+    await rm(candidate, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function recoverDeadLock(target, observedOwner) {
   const recovery = recoveryPath(target);
   try {
@@ -94,7 +114,7 @@ async function recoverDeadLock(target, observedOwner) {
   }
 }
 
-async function acquireInstallerLock(context) {
+async function acquireInstallerLock(context, fault) {
   const target = lockPath(context);
   const timeoutMs = context.installerLockTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
@@ -108,20 +128,7 @@ async function acquireInstallerLock(context) {
 
     const token = randomUUID();
     try {
-      await mkdir(target);
-      if (await pathExists(recoveryPath(target))) {
-        await rm(target, { recursive: true, force: true });
-        await delay(RETRY_DELAY_MS);
-        continue;
-      }
-      const draft = path.join(target, `owner.${token}.tmp`);
-      try {
-        await writeFile(draft, `${JSON.stringify({ pid: process.pid, token })}\n`, { flag: 'wx' });
-        await rename(draft, path.join(target, 'owner.json'));
-      } catch (error) {
-        await rm(target, { recursive: true, force: true });
-        throw error;
-      }
+      await publishInstallerLock(target, token, fault);
 
       return async () => {
         const owner = await readOwner(target);
@@ -131,7 +138,8 @@ async function acquireInstallerLock(context) {
         }
       };
     } catch (error) {
-      if (error?.code !== 'EEXIST' && !isRetryableLockContentionError(error)) throw error;
+      if (!['EEXIST', 'ENOTEMPTY'].includes(error?.code)
+        && !isRetryableLockContentionError(error)) throw error;
     }
 
     let owner;
@@ -155,8 +163,8 @@ async function acquireInstallerLock(context) {
   throw new Error(`Installer lock timed out; cannot prove it is safe to reclaim: ${target}`);
 }
 
-export async function withInstallerLock(context, operation) {
-  const release = await acquireInstallerLock(context);
+export async function withInstallerLock(context, operation, fault = null) {
+  const release = await acquireInstallerLock(context, fault);
   try {
     return await operation();
   } finally {

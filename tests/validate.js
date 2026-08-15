@@ -214,18 +214,25 @@ async function validateCli(packageJson) {
 }
 
 function validateCi(workflow) {
+  assert.match(workflow, /push:\s*\r?\n\s+branches:\s*\[main\]/u);
+  assert.match(workflow, /fail-fast:\s*false/u);
   assert.match(workflow, /os:\s*\[windows-latest, macos-latest, ubuntu-latest\]/u);
   assert.match(workflow, /node-version:\s*22/u);
-  assert.match(workflow, /actions\/setup-python@[0-9a-f]{40}\s+# v5/u);
-  assert.match(workflow, /actions\/setup-java@[0-9a-f]{40}\s+# v4/u);
+  assert.match(workflow, /actions\/checkout@[0-9a-f]{40}\s+# v7/u);
+  assert.match(workflow, /actions\/setup-node@[0-9a-f]{40}\s+# v7/u);
+  assert.match(workflow, /actions\/setup-python@[0-9a-f]{40}\s+# v7/u);
+  assert.match(workflow, /actions\/setup-java@[0-9a-f]{40}\s+# v5/u);
   assert.match(workflow, /run:\s*npm ci --ignore-scripts/u);
   assert.match(workflow, /run:\s*npm run check/u);
   assert.match(workflow, /run:\s*npm pack --dry-run/u);
 }
 
 function validateReleaseWorkflow(workflow) {
-  assert.match(workflow, /googleapis\/release-please-action@[0-9a-f]{40}\s+# v4/u);
-  assert.match(workflow, /softprops\/action-gh-release@[0-9a-f]{40}\s+# v2/u);
+  assert.match(workflow, /actions\/github-script@[0-9a-f]{40}\s+# v9/u);
+  assert.match(workflow, /actions\/checkout@[0-9a-f]{40}\s+# v7/u);
+  assert.match(workflow, /actions\/setup-node@[0-9a-f]{40}\s+# v7/u);
+  assert.match(workflow, /googleapis\/release-please-action@[0-9a-f]{40}\s+# v5/u);
+  assert.match(workflow, /softprops\/action-gh-release@[0-9a-f]{40}\s+# v3/u);
   assert.match(workflow, /group:\s*release-\$\{\{ github\.repository \}\}/u);
   assert.match(workflow, /config-file:\s*release-please-config\.json/u);
   assert.match(workflow, /manifest-file:\s*\.release-please-manifest\.json/u);

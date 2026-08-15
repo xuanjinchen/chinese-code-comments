@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -39,6 +39,21 @@ test('concurrent stale-lock recovery preserves mutual exclusion', async (t) => {
   })));
 
   assert.equal(maximum, 1);
+});
+
+test('a failure before lock publication never exposes an ownerless lock', async (t) => {
+  const context = await lockFixture(t);
+  const lock = path.join(context.home, '.chinese-code-comments', 'installer.lock');
+
+  await assert.rejects(
+    withInstallerLock(
+      context,
+      async () => {},
+      { phase: 'before-publish' },
+    ),
+    /Injected installer lock failure before publish/,
+  );
+  await assert.rejects(lstat(lock), (error) => error?.code === 'ENOENT');
 });
 
 test('an ownerless lock fails after the configured timeout', async (t) => {
