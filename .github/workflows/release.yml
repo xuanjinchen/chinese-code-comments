@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Resolve release state
         id: state
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           github-token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           script: |
@@ -87,13 +87,13 @@ jobs:
             core.setOutput('bootstrap_needed', String(bootstrapNeeded));
 
       - name: Check out verified source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ steps.state.outputs.source_ref }}
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -106,7 +106,7 @@ jobs:
 
       - name: Validate selected release tag
         if: steps.state.outputs.target_tag != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           TARGET_TAG: ${{ steps.state.outputs.target_tag }}
         with:
@@ -131,7 +131,7 @@ jobs:
 
       - name: Create or complete v0.1.0
         if: steps.state.outputs.bootstrap_needed == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v0.1.0
           target_commitish: ${{ steps.state.outputs.source_ref }}
@@ -146,7 +146,7 @@ jobs:
 
       - name: Repair existing release assets
         if: steps.state.outputs.repair == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.state.outputs.target_tag }}
           files: |
@@ -159,7 +159,7 @@ jobs:
       - name: Run Release Please
         id: release
         if: github.event_name == 'push' && steps.state.outputs.bootstrap_needed == 'false'
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
@@ -168,7 +168,7 @@ jobs:
       # 发布资产必须来自不可变 Tag，避免失败重跑时误用较新的 main。
       - name: Check out released tag
         if: steps.release.outputs.release_created == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: refs/tags/${{ steps.release.outputs.tag_name }}
           fetch-depth: 0
@@ -183,7 +183,7 @@ jobs:
 
       - name: Validate released tag
         if: steps.release.outputs.release_created == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           TARGET_TAG: ${{ steps.release.outputs.tag_name }}
         with:
@@ -201,7 +201,7 @@ jobs:
 
       - name: Upload released assets
         if: steps.release.outputs.release_created == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.release.outputs.tag_name }}
           files: |

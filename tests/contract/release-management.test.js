@@ -91,18 +91,18 @@ test('Release 工作流幂等创建版本并上传两个资产', async () => {
   assert.match(workflow, /issues:\s*write/u);
   assert.match(workflow, /group:\s*release-\$\{\{ github\.repository \}\}/u);
   assert.match(workflow, /cancel-in-progress:\s*false/u);
-  assert.match(workflow, /actions\/github-script@v7/u);
+  assert.match(workflow, /actions\/github-script@[0-9a-f]{40}\s+# v7/u);
   assert.match(workflow, /refs\/tags\/v0\.1\.0/u);
   assert.match(workflow, /getReleaseByTag/u);
   assert.match(workflow, /release_tag/u);
-  assert.match(workflow, /googleapis\/release-please-action@v4/u);
+  assert.match(workflow, /googleapis\/release-please-action@[0-9a-f]{40}\s+# v4/u);
   assert.match(workflow, /config-file:\s*release-please-config\.json/u);
   assert.match(workflow, /manifest-file:\s*\.release-please-manifest\.json/u);
   assert.doesNotMatch(workflow, /^\s+release-type:/mu);
   assert.match(workflow, /RELEASE_PLEASE_TOKEN/u);
   assert.match(workflow, /github\.token/u);
   assert.match(workflow, /npm run release:pack/u);
-  assert.match(workflow, /softprops\/action-gh-release@v2/u);
+  assert.match(workflow, /softprops\/action-gh-release@[0-9a-f]{40}\s+# v2/u);
   assert.match(workflow, /steps\.release\.outputs\.tag_name/u);
   assert.match(workflow, /source_ref', `refs\/tags\/\$\{tagName\}`/u);
   assert.match(
@@ -115,6 +115,38 @@ test('Release 工作流幂等创建版本并上传两个资产', async () => {
   assert.match(workflow, /dist\/\*\.tgz/u);
   assert.match(workflow, /dist\/\*\.sha256/u);
   assert.doesNotMatch(workflow, /npm publish/u);
+});
+
+test('GitHub Actions 全部固定不可变的提交 SHA', async () => {
+  const workflowPaths = [
+    '.github/workflows/ci.yml',
+    '.github/workflows/release.yml',
+  ];
+
+  for (const workflowPath of workflowPaths) {
+    const workflow = await readFile(path.join(repositoryRoot, workflowPath), 'utf8');
+    const actionLines = [...workflow.matchAll(/^\s*(?:-\s*)?uses:\s*([^\s#]+).*$/gmu)];
+
+    assert.ok(actionLines.length > 0, `${workflowPath} must use at least one action`);
+    for (const [, reference] of actionLines) {
+      if (reference.startsWith('./')) continue;
+      assert.match(
+        reference,
+        /^[^@\s]+@[0-9a-f]{40}$/u,
+        `${workflowPath} must pin ${reference} to a full commit SHA`,
+      );
+    }
+  }
+});
+
+test('Dependabot 覆盖仓库实际供应链', async () => {
+  const dependabot = await readFile(
+    path.join(repositoryRoot, '.github', 'dependabot.yml'),
+    'utf8',
+  );
+
+  assert.match(dependabot, /package-ecosystem:\s*github-actions/u);
+  assert.match(dependabot, /package-ecosystem:\s*npm/u);
 });
 
 test('README 说明统一版本维护流程', async () => {

@@ -4,7 +4,7 @@
 
 **Goal:** 清理仓库历史中的个人元数据，补齐最小开源与供应链防护，并在验证后公开仓库。
 
-**Architecture:** 先在仓库外保留完整恢复点，再一次性重写所有公开引用。仓库内容与 GitHub 配置分开处理：文件变更先经本地验证和独立审查，远程强制更新完成后才启用不可变保护并公开仓库。
+**Architecture:** 先在仓库外保留完整恢复点，再一次性重写所有公开引用。仓库内容与 GitHub 配置分开处理：文件变更先经本地验证和独立审查，远程强制更新完成后公开仓库，并立即启用不可变保护。
 
 **Tech Stack:** Git、Node.js 22+、npm、GitHub Actions、GitHub REST API、Gitleaks
 
@@ -54,14 +54,10 @@
 **Files:**
 - Create: `SECURITY.md`
 - Create: `CONTRIBUTING.md`
-- Create: `CODE_OF_CONDUCT.md`
-- Create: `.github/CODEOWNERS`
-- Create: `.github/ISSUE_TEMPLATE/bug_report.yml`
-- Create: `.github/ISSUE_TEMPLATE/compatibility.yml`
-- Create: `.github/ISSUE_TEMPLATE/config.yml`
+- Create: `.github/ISSUE_TEMPLATE/bug-or-compatibility.yml`
 - Create: `.github/PULL_REQUEST_TEMPLATE.md`
 
-- [ ] 写入只围绕代码注释、安装兼容和安全问题的模板。
+- [ ] 写入只围绕代码注释、安装兼容和安全问题的最小模板，合并重复的 Bug 与兼容性表单。
 - [ ] 使用 GitHub 私密漏洞报告，不发布个人联系邮箱。
 - [ ] 在贡献指南中固定 `npm ci --ignore-scripts`、`npm run check`、`npm pack --dry-run` 和 `git diff --check`。
 
@@ -70,13 +66,12 @@
 **Files:**
 - Modify: `.github/workflows/ci.yml`
 - Modify: `.github/workflows/release.yml`
-- Create: `.github/workflows/codeql.yml`
 - Create: `.github/dependabot.yml`
 - Test: `tests/contract/release-management.test.js`
 
 - [ ] 先增加会因可变 Action 标签而失败的契约测试，并确认失败原因正确。
 - [ ] 将所有 `uses:` 固定到对应主版本当前指向的完整提交 SHA，并在行尾保留版本注释。
-- [ ] 添加 JavaScript/TypeScript CodeQL 工作流和 npm/GitHub Actions Dependabot 月度更新。
+- [ ] 添加 npm/GitHub Actions Dependabot 月度更新；CodeQL 在公开后使用 Default Setup。
 - [ ] 运行契约测试并确认通过。
 
 ### Task 6: Pin Stable Installation Documentation
@@ -108,19 +103,18 @@
 - [ ] 使 GitHub Releases 重新绑定到新标签，重建 tarball 与 SHA-256 资产。
 - [ ] 下载并校验两个 Release 的资产和清单。
 
-### Task 9: Apply GitHub Protections
+### Task 9: Make Public And Apply GitHub Protections
 
 **Files:** GitHub repository settings
 
-- [ ] 创建 `main` 分支 Ruleset 和 `v*` 标签 Ruleset。
-- [ ] 将 Actions 默认权限设为只读，禁止 Actions 创建或批准 PR，并限制允许的 Actions。
-- [ ] 启用依赖漏洞提醒、Private Vulnerability Reporting 以及当前可用的 Secret Scanning 和 Push Protection。
+- [ ] 将仓库可见性切换为 public，并立即创建 `main` 分支 Ruleset 和 `v*` 标签 Ruleset。
+- [ ] 将 Actions 默认权限设为只读并限制允许的 Actions；配置专用 `RELEASE_PLEASE_TOKEN` 前保留创建 PR 权限。
+- [ ] 启用依赖漏洞提醒、Private Vulnerability Reporting、Secret Scanning、Push Protection 和 CodeQL Default Setup。
 
-### Task 10: Make Public And Verify Anonymous Use
+### Task 10: Verify Anonymous Use
 
 **Files:** GitHub repository settings
 
-- [ ] 将仓库可见性切换为 public。
 - [ ] 使用未认证 GitHub API 验证仓库元数据、源码、标签和 Releases 可访问。
 - [ ] 在隔离临时目录从 `#v0.1.1` 执行匿名安装、`doctor` 和卸载验证。
 - [ ] 确认 CI、CodeQL、Dependabot、Rulesets 和安全功能处于预期状态。

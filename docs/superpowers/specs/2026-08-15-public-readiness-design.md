@@ -10,9 +10,9 @@
 - 重写全部公开引用中的作者、提交者邮箱和历史文档本机绝对路径。
 - 协调重写后的 `main`、Release Please 分支、`v0.1.0`、`v0.1.1`、GitHub Releases 与 `CHANGELOG.md`。
 - 增加漏洞报告、贡献指南、行为准则、所有者、Issue/PR 模板和依赖更新配置。
-- 将第三方 GitHub Actions 固定到不可变提交 SHA，并增加最小 CodeQL 检查。
+- 将第三方 GitHub Actions 固定到不可变提交 SHA，并在公开后启用 CodeQL Default Setup。
 - 稳定安装命令固定到 `v0.1.1`，`main` 只作为明确标注的开发入口。
-- 在历史改写完成后启用分支、标签、Actions 和 GitHub 安全保护，最后公开仓库并执行匿名验证。
+- 在历史改写完成后公开仓库，随即启用分支、标签、Actions 和 GitHub 安全保护，再执行匿名验证。
 
 不新增 MCP、编辑器插件、注释之外的 Agent 能力、运行时依赖或遥测。
 
@@ -28,16 +28,18 @@
 
 - `SECURITY.md` 使用 GitHub Private Vulnerability Reporting 作为保密渠道，不公开个人邮箱。
 - `CONTRIBUTING.md` 约束项目边界、Node.js 22+、Conventional Commits 和验证命令。
-- `CODE_OF_CONDUCT.md` 使用 Contributor Covenant 2.1，并将执行渠道指向私密安全报告或仓库维护者页面。
-- `.github/CODEOWNERS`、Issue 表单和 PR 模板明确所有权与复现信息。
+- 合并的 Issue 表单与 PR 模板覆盖复现、兼容性、测试和敏感信息检查，避免重复模板。
 - `.github/dependabot.yml` 仅维护 npm 与 GitHub Actions。
-- CodeQL 只分析仓库实际使用的 JavaScript/TypeScript，并以最小只读权限运行。
+
+单维护者阶段不增加没有实际审批收益的 `CODEOWNERS`。在具备独立的私密行为投诉渠道前不增加行为准则，避免把漏洞报告渠道错误用于行为投诉。
 
 ## GitHub Configuration
 
-所有强制推送和 Release 重建完成后再创建 Rulesets，避免保护规则阻断历史改写。`main` 要求 Pull Request、CI 通过、禁止删除和非快进更新；版本标签 `v*` 禁止删除和更新。Actions 默认权限设为只读，不允许 Actions 创建或批准 PR，仅允许选定的官方与已固定 SHA 的第三方 Action。
+GitHub Free 私有仓库不能创建所需 Rulesets，因此所有强制推送和 Release 协调完成后先公开仓库，再立即创建保护规则。`main` 要求 Pull Request、CI 通过、禁止删除和非快进更新；版本标签 `v*` 禁止删除和更新。Actions 默认权限设为只读，仅允许选定的官方与已固定 SHA 的第三方 Action。
 
-仓库公开后启用依赖漏洞提醒、Secret Scanning、Push Protection 和 Private Vulnerability Reporting。可用性以 GitHub API 的实际返回为准，不假设私有仓库阶段的免费功能状态。
+在仓库尚未配置独立的 `RELEASE_PLEASE_TOKEN` 时，保留 Actions 创建 Pull Request 的权限，避免破坏 Release Please。只有配置并验证仓库专用细粒度 PAT 后才关闭该权限。
+
+仓库公开后启用依赖漏洞提醒、Secret Scanning、Push Protection、Private Vulnerability Reporting 和 JavaScript/TypeScript CodeQL Default Setup。可用性以 GitHub API 的实际返回为准，不假设私有仓库阶段的免费功能状态。
 
 ## Verification
 

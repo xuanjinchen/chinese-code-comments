@@ -10,12 +10,17 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 const expectedFiles = [
   '.gitattributes',
+  '.github/ISSUE_TEMPLATE/bug-or-compatibility.yml',
+  '.github/PULL_REQUEST_TEMPLATE.md',
+  '.github/dependabot.yml',
   '.github/workflows/release.yml',
   '.github/workflows/ci.yml',
   '.gitignore',
   '.release-please-manifest.json',
   'CHANGELOG.md',
+  'CONTRIBUTING.md',
   'README.md',
+  'SECURITY.md',
   'SKILL.md',
   'agents/openai.yaml',
   'bin/chinese-code-comments.js',
@@ -159,8 +164,9 @@ function validateOpenAiMetadata(metadata) {
 function validateReadme(readme) {
   const requiredSnippets = [
     'Node.js 22',
-    'npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git install',
-    'npx skills add xuanjinchen/chinese-code-comments -g --all',
+    'npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install',
+    'npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#main install',
+    'npx skills add xuanjinchen/chinese-code-comments#v0.1.1 -g --all',
     'install --agent',
     'uninstall --agent',
     'doctor --agent',
@@ -175,6 +181,11 @@ function validateReadme(readme) {
   for (const snippet of requiredSnippets) {
     assert.ok(readme.includes(snippet), `README.md must document: ${snippet}`);
   }
+  assert.doesNotMatch(
+    readme,
+    /npx --yes git\+https:\/\/github\.com\/xuanjinchen\/chinese-code-comments\.git\s/u,
+    'stable GitHub installer commands must pin an immutable release tag',
+  );
   assert.doesNotMatch(readme, /\.ps1\b/u, 'README.md must not document PowerShell entry points');
 }
 
@@ -205,16 +216,16 @@ async function validateCli(packageJson) {
 function validateCi(workflow) {
   assert.match(workflow, /os:\s*\[windows-latest, macos-latest, ubuntu-latest\]/u);
   assert.match(workflow, /node-version:\s*22/u);
-  assert.match(workflow, /actions\/setup-python@v5/u);
-  assert.match(workflow, /actions\/setup-java@v4/u);
+  assert.match(workflow, /actions\/setup-python@[0-9a-f]{40}\s+# v5/u);
+  assert.match(workflow, /actions\/setup-java@[0-9a-f]{40}\s+# v4/u);
   assert.match(workflow, /run:\s*npm ci --ignore-scripts/u);
   assert.match(workflow, /run:\s*npm run check/u);
   assert.match(workflow, /run:\s*npm pack --dry-run/u);
 }
 
 function validateReleaseWorkflow(workflow) {
-  assert.match(workflow, /googleapis\/release-please-action@v4/u);
-  assert.match(workflow, /softprops\/action-gh-release@v2/u);
+  assert.match(workflow, /googleapis\/release-please-action@[0-9a-f]{40}\s+# v4/u);
+  assert.match(workflow, /softprops\/action-gh-release@[0-9a-f]{40}\s+# v2/u);
   assert.match(workflow, /group:\s*release-\$\{\{ github\.repository \}\}/u);
   assert.match(workflow, /config-file:\s*release-please-config\.json/u);
   assert.match(workflow, /manifest-file:\s*\.release-please-manifest\.json/u);

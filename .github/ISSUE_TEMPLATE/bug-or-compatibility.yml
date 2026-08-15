@@ -1,0 +1,63 @@
+name: Bug or compatibility report
+description: Report comment behavior, installer, Agent, or platform compatibility problems.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not disclose vulnerabilities or secrets here. Use Security > Report a vulnerability instead.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Comment behavior
+        - Install, upgrade, doctor, or uninstall
+        - Agent compatibility
+        - Release package or documentation
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Project version
+      placeholder: v0.1.1 or a commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the Agent and version, Node.js version, operating system, and shell.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest safe example and exact commands. Remove credentials and private code.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include relevant output after removing sensitive values.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I checked existing Issues and the latest Release.
+          required: true
+        - label: This report does not contain credentials, private code, or personal data.
+          required: true
