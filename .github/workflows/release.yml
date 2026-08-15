@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Resolve release state
         id: state
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           script: |
@@ -106,7 +106,7 @@ jobs:
 
       - name: Validate selected release tag
         if: steps.state.outputs.target_tag != ''
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           TARGET_TAG: ${{ steps.state.outputs.target_tag }}
         with:
@@ -183,7 +183,7 @@ jobs:
 
       - name: Validate released tag
         if: steps.release.outputs.release_created == 'true'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           TARGET_TAG: ${{ steps.release.outputs.tag_name }}
         with:
