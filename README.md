@@ -238,7 +238,7 @@ npm pack --dry-run
 - `npm run check` 顺序运行全部不调用外部模型的确定性门禁，也是默认 CI 的入口。
 - `npm pack --dry-run` 检查发布包内容，不发布软件包。
 
-运行时没有第三方依赖。确定性检查不需要 Agent 登录，不产生模型费用。
+运行时没有第三方依赖。确定性检查不需要 Agent 登录，不调用模型，也不产生模型费用。提示预算测试将四层运行时规则限制为不超过 6,200 UTF-8 字节，并将每个 live eval 的重复输出协议限制为不超过 500 个 Unicode 字符。
 
 ### 显式单 Agent live eval 与 smoke
 
@@ -246,6 +246,8 @@ npm pack --dry-run
 
 ```bash
 npm run eval -- --agent <id>
+npm run eval:full -- --agent <id>
+npm run eval -- --agent <id> --case <case-id>[,<case-id>...]
 npm run smoke -- --agent <id>
 ```
 
@@ -253,12 +255,14 @@ npm run smoke -- --agent <id>
 
 ```bash
 npm run eval -- --agent codex
+npm run eval:full -- --agent codex
+npm run eval -- --agent codex --case json-no-comments,read-only-explanation
 npm run smoke -- --agent claude
 ```
 
 每次 live eval 或 smoke 只运行一个 Agent。所选 Agent CLI 必须位于 `PATH` 中，并已完成登录和所需配置。CLI 缺失、未登录、命令协议变化或模型调用失败时，命令会明确失败，不会静默跳过。
 
-live eval 运行 19 个跨语言结构化案例。smoke 在隔离的临时 Git 仓库中发送不含“注释”字样的代码修改请求，验证自动触发行为、真实 diff、注释质量和最终审查报告；当 Agent 输出可观察的工具轨迹时，还会直接验证 Skill 读取和审查顺序，不提供工具轨迹的 Agent 则只报告行为证据。两者可能产生模型费用，且不会由 `npm run check` 或默认 CI 自动运行。
+默认 live eval 运行 8 个核心案例；`eval:full` 运行全部 20 个跨语言结构化案例；`--case` 只运行指定案例。每个案例启动一次独立模型会话，因此完整评测成本明显高于默认评测。smoke 只启动一次模型会话，并在隔离的临时 Git 仓库中发送不含“注释”字样的代码修改请求，验证自动触发行为、真实 diff、注释质量和最终审查报告；当 Agent 输出可观察的工具轨迹时，还会直接验证 Skill 读取和审查顺序，不提供工具轨迹的 Agent 则只报告行为证据。live eval 和 smoke 可能产生模型费用，且不会由 `npm run check` 或默认 CI 自动运行。
 
 ## 版本发布
 
@@ -314,7 +318,7 @@ chinese-code-comments/
 ├── bin/chinese-code-comments.js # 跨平台 CLI 入口
 ├── src/                         # 安装、卸载、诊断、事务和六个适配器
 ├── resources/global-policy.md   # 共享自动触发策略模板
-├── evals/evals.json             # 19 个真实模型评测定义
+├── evals/evals.json             # 20 个真实模型评测定义
 ├── tests/                       # 单元、集成、契约、live eval 和 smoke
 ├── package.json                 # Node.js 22+ 命令与包元数据
 └── docs/superpowers/            # 已批准设计、计划与历史记录
