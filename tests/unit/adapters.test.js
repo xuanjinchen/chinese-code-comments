@@ -68,6 +68,28 @@ test('each adapter applies only its documented environment override', () => {
   assert.equal(adapter('hermes').policyFile(context), '/opt/hermes/SOUL.md');
 });
 
+test('relative configuration roots are rejected before adapters are used', () => {
+  const cases = [
+    ['codex', 'CODEX_HOME'],
+    ['claude', 'CLAUDE_CONFIG_DIR'],
+    ['gemini', 'GEMINI_CLI_HOME'],
+    ['grok', 'GROK_HOME'],
+    ['opencode', 'XDG_CONFIG_HOME'],
+    ['hermes', 'HERMES_HOME'],
+  ];
+
+  for (const [agent, variable] of cases) {
+    assert.throws(
+      () => selectAdapters([agent], {
+        ...linuxContext,
+        env: { [variable]: 'relative-config' },
+      }),
+      /must be absolute/i,
+      `${variable} must not produce relative managed paths`,
+    );
+  }
+});
+
 test('adapters use the three approved skill storage groups', () => {
   const expected = {
     codex: ['agents', '/home/tester/.agents/skills'],

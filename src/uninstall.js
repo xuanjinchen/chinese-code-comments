@@ -67,16 +67,16 @@ async function pruneEmptyParents(targets, home, managedRoots) {
   return warnings;
 }
 
-function remainingV2State(currentState, selectedIds) {
-  const agents = currentState.agents.filter((id) => !selectedIds.has(id));
+function remainingV2State(currentState, removedIds) {
+  const agents = currentState.agents.filter((id) => !removedIds.has(id));
   const storageGroups = {};
   for (const [group, record] of Object.entries(currentState.storageGroups)) {
-    const members = record.members.filter((id) => !selectedIds.has(id));
+    const members = record.members.filter((id) => !removedIds.has(id));
     if (members.length > 0) storageGroups[group] = { ...record, members };
   }
   const policies = {};
   for (const [agent, record] of Object.entries(currentState.policies)) {
-    if (!selectedIds.has(agent)) policies[agent] = record;
+    if (!removedIds.has(agent)) policies[agent] = record;
   }
   return { agents, storageGroups, policies };
 }
@@ -98,27 +98,24 @@ async function addOwnedFileRemoval(record, kind, entries, warnings) {
 async function addPolicyRemoval(adapter, record, entries, warnings) {
   const target = record?.path ?? adapter.policyFile;
   const currentBytes = await readOptionalBytes(target);
-  if (currentBytes === null) return;
-  if (record && digest(currentBytes) !== record.digest) {
-    warnings.push(`Preserved modified policy with content drift during uninstall: ${target}`);
-    return;
-  }
+  if (currentBytes === null) return true;
 
-  let current;
   try {
-    current = decodeText(currentBytes, target);
+    const current = decodeText(currentBytes, target);
+    const removed = removeManagedBlock(current.text, adapter.markers);
+    if (!removed.removed) return true;
+    const removeFile = removed.text.length === 0 && record?.owned !== false;
+    // 规则文件只拥有标记块；块外内容可由用户修改，不能用整文件摘要阻止卸载。
+    entries.push({
+      target,
+      content: removeFile ? null : encodeText(removed.text, current),
+      kind: `policy:${adapter.id}`,
+    });
+    return true;
   } catch (error) {
     warnings.push(`Preserved unreadable policy during uninstall: ${target}: ${error.message}`);
-    return;
+    return false;
   }
-  const removed = removeManagedBlock(current.text, adapter.markers);
-  if (!removed.removed) return;
-  const removeFile = removed.text.length === 0 && record?.owned !== false;
-  entries.push({
-    target,
-    content: removeFile ? null : encodeText(removed.text, current),
-    kind: `policy:${adapter.id}`,
-  });
 }
 
 async function warnForUntrackedFiles(selected, context, warnings) {
@@ -147,7 +144,6 @@ async function warnForUntrackedFiles(selected, context, warnings) {
 
 async function uninstallUnlocked({ agents, context, fault }) {
   const selected = selectAdapters(agents, context);
-  const selectedIds = new Set(selected.map((adapter) => adapter.id));
   let currentState;
   let stateWarning = null;
   try {
@@ -159,6 +155,7 @@ async function uninstallUnlocked({ agents, context, fault }) {
   const stateKnown = stateWarning === null && currentState.installerVersion !== null;
   const entries = [];
   const warnings = [stateWarning].filter(Boolean);
+  const removableIds = new Set();
 
   for (const adapter of selected) {
     if (currentState.schemaVersion !== 2 || !stateKnown
@@ -167,15 +164,17 @@ async function uninstallUnlocked({ agents, context, fault }) {
     if (!samePath(policyRecord.path, adapter.policyFile(context))) {
       warnings.push(`Configured policy path changed since installation: ${adapter.id}`);
     }
-    await addPolicyRemoval(adapter, policyRecord, entries, warnings);
+    if (await addPolicyRemoval(adapter, policyRecord, entries, warnings)) {
+      removableIds.add(adapter.id);
+    }
   }
 
   const managedRoots = [];
   if (currentState.schemaVersion === 2 && stateKnown) {
     for (const [group, record] of Object.entries(currentState.storageGroups)) {
-      const selectedMembers = record.members.filter((id) => selectedIds.has(id));
-      const remainingMembers = record.members.filter((id) => !selectedIds.has(id));
-      if (selectedMembers.length === 0 || remainingMembers.length > 0) continue;
+      const removedMembers = record.members.filter((id) => removableIds.has(id));
+      const remainingMembers = record.members.filter((id) => !removableIds.has(id));
+      if (removedMembers.length === 0 || remainingMembers.length > 0) continue;
       const selectedAdapter = selected.find((adapter) => adapter.storageGroup === group);
       if (selectedAdapter && !samePath(record.root, selectedAdapter.skillRoot(context))) {
         warnings.push(`Configured Skill root changed since installation: ${group}`);
@@ -193,7 +192,7 @@ async function uninstallUnlocked({ agents, context, fault }) {
   }
 
   if (stateKnown && currentState.schemaVersion === 2) {
-    const remaining = remainingV2State(currentState, selectedIds);
+    const remaining = remainingV2State(currentState, removableIds);
     entries.push({
       target: statePath(context),
       content: remaining.agents.length === 0

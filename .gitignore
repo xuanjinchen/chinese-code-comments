@@ -1,6 +1,8 @@
 /eval-results/
 /.codex-smoke-*/
 /.codex-handoff.md
+/.neuralmemory/
+/.playwright-mcp/
 coverage/
 .npm/
 node_modules/

@@ -252,6 +252,22 @@ test('state ownership does not authorize overwriting a Skill at a changed config
   assert.deepEqual(await fixture.snapshot(), before);
 });
 
+test('install rejects a relative configuration root before writing files', async (t) => {
+  const fixture = await createHomeFixture(t);
+  const before = await fixture.snapshot();
+
+  await assert.rejects(
+    install({
+      agents: ['claude'],
+      context: { ...fixture.context, env: { CLAUDE_CONFIG_DIR: 'relative-claude' } },
+      sourceRoot,
+    }),
+    /must be absolute/i,
+  );
+
+  assert.deepEqual(await fixture.snapshot(), before);
+});
+
 test('preflight failure leaves every earlier target absent', async (t) => {
   const fixture = await createHomeFixture(t);
   await fixture.write('.claude', 'occupied');

@@ -54,6 +54,19 @@ test('doctor reports malformed policy markers as invalid', async (t) => {
   assert.equal(statuses(result, 'policy').includes('invalid'), true);
 });
 
+test('doctor ignores changes outside the managed policy block', async (t) => {
+  const fixture = await createHomeFixture(t);
+  await install({ agents: ['claude'], context: fixture.context, sourceRoot });
+  const policy = await fixture.read('.claude/CLAUDE.md');
+  await fixture.write('.claude/CLAUDE.md', `${policy}# user-owned rule\n`);
+
+  const result = await doctor({ agents: ['claude'], context: fixture.context, sourceRoot });
+
+  assert.equal(result.healthy, true);
+  assert.equal(statuses(result, 'policy').includes('ok'), true);
+  assert.equal(statuses(result, 'state').includes('ok'), true);
+});
+
 test('doctor detects state reference drift', async (t) => {
   const fixture = await createHomeFixture(t);
   await install({ agents: ['codex'], context: fixture.context, sourceRoot });

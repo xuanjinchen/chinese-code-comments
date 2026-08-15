@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import process from 'node:process';
 import { promisify } from 'node:util';
@@ -39,15 +40,27 @@ async function prepareOutputRoot(outputRoot, repositoryRoot) {
   await writeFile(path.join(outputRoot, outputMarker), 'managed by release:pack\n', 'utf8');
 }
 
-function npmInvocation(outputRoot) {
-  const args = ['pack', '--ignore-scripts', '--json', '--pack-destination', outputRoot];
-  if (process.platform !== 'win32') return { command: 'npm', args };
-  if (/[\r\n"&|<>^%!]/u.test(outputRoot)) {
-    throw new Error(`Release output path contains unsupported Windows command characters: ${outputRoot}`);
+function resolveNpmCliPath(nodeExecutable) {
+  const require = createRequire(path.join(path.dirname(nodeExecutable), 'resolve-npm.cjs'));
+  const packageJsonPath = require.resolve('npm/package.json');
+  const npmPackage = require(packageJsonPath);
+  if (typeof npmPackage.bin?.npm !== 'string') {
+    throw new Error('The Node.js installation does not expose the npm CLI entry point');
   }
+  return path.resolve(path.dirname(packageJsonPath), npmPackage.bin.npm);
+}
+
+export function npmInvocation(outputRoot, {
+  platform = process.platform,
+  nodeExecutable = process.execPath,
+  npmCliPath,
+} = {}) {
+  const args = ['pack', '--ignore-scripts', '--json', '--pack-destination', outputRoot];
+  if (platform !== 'win32') return { command: 'npm', args };
+  // Windows 的 npm 入口是 .cmd 包装器；直接运行 npm CLI，避免路径参数进入命令解释器。
   return {
-    command: process.env.ComSpec ?? 'cmd.exe',
-    args: ['/d', '/s', '/c', 'npm.cmd', ...args],
+    command: nodeExecutable,
+    args: [npmCliPath ?? resolveNpmCliPath(nodeExecutable), ...args],
   };
 }
 
