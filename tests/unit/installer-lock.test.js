@@ -56,6 +56,20 @@ test('a failure before lock publication never exposes an ownerless lock', async 
   await assert.rejects(lstat(lock), (error) => error?.code === 'ENOENT');
 });
 
+test('a published lock is a complete owner file', async (t) => {
+  const context = await lockFixture(t);
+  const lock = path.join(context.home, '.chinese-code-comments', 'installer.lock');
+
+  await withInstallerLock(context, async () => {
+    const stats = await lstat(lock);
+    const owner = JSON.parse(await readFile(lock, 'utf8'));
+
+    assert.equal(stats.isFile(), true);
+    assert.equal(owner.pid, process.pid);
+    assert.equal(typeof owner.token, 'string');
+  });
+});
+
 test('an ownerless lock fails after the configured timeout', async (t) => {
   const context = await lockFixture(t, 60);
   await mkdir(path.join(context.home, '.chinese-code-comments', 'installer.lock'), { recursive: true });

@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -36,7 +36,10 @@ async function pathExists(target) {
 
 async function readOwner(target) {
   try {
-    return JSON.parse(await readFile(path.join(target, 'owner.json'), 'utf8'));
+    const stats = await lstat(target);
+    // 兼容旧版本的 owner.json 目录锁，新版本直接读取原子发布的 owner 文件。
+    const ownerPath = stats.isDirectory() ? path.join(target, 'owner.json') : target;
+    return JSON.parse(await readFile(ownerPath, 'utf8'));
   } catch (error) {
     if (error?.code === 'ENOENT') return null;
     throw new Error(`Installer lock owner is invalid: ${target}`, { cause: error });
@@ -60,22 +63,23 @@ async function delay(milliseconds) {
 
 async function publishInstallerLock(target, token, fault) {
   const candidate = `${target}.candidate.${token}`;
-  await mkdir(candidate);
+  await writeFile(
+    candidate,
+    `${JSON.stringify({ pid: process.pid, token })}\n`,
+    { flag: 'wx' },
+  );
   try {
-    await writeFile(
-      path.join(candidate, 'owner.json'),
-      `${JSON.stringify({ pid: process.pid, token })}\n`,
-      { flag: 'wx' },
-    );
     if (fault?.phase === 'before-publish') {
       throw new Error('Injected installer lock failure before publish');
     }
-    // 先写完整所有者再原子发布目录，进程崩溃不会留下可见的无所有者锁。
-    await rename(candidate, target);
+    // 硬链接以不覆盖方式原子发布完整 owner，跨平台避免可见的无所有者锁。
+    await link(candidate, target);
   } catch (error) {
-    await rm(candidate, { recursive: true, force: true });
+    await rm(candidate, { force: true });
     throw error;
   }
+  // 正式锁已经持有；候选链接清理失败只会留下无阻塞残留，不能否定所有权。
+  await rm(candidate, { force: true }).catch(() => {});
 }
 
 async function recoverDeadLock(target, observedOwner) {
@@ -101,7 +105,7 @@ async function recoverDeadLock(target, observedOwner) {
 
     const quarantine = `${target}.stale.${randomUUID()}`;
     try {
-      // recovery gate 阻止新持有者提交 owner；rename 只隔离本次重新确认过的锁目录。
+      // recovery gate 阻止新持有者发布锁；rename 只隔离本次重新确认过的锁。
       await rename(target, quarantine);
     } catch (error) {
       if (error?.code === 'ENOENT' || isRetryableLockContentionError(error)) return false;
@@ -132,7 +136,7 @@ async function acquireInstallerLock(context, fault) {
 
       return async () => {
         const owner = await readOwner(target);
-        // 只释放自己持有的锁，避免误删等待期间由其他进程重新创建的锁目录。
+        // 只释放自己持有的锁，避免误删等待期间由其他进程重新发布的锁。
         if (owner?.token === token) {
           await rm(target, { recursive: true, force: true });
         }
