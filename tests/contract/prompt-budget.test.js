@@ -9,6 +9,9 @@ import { evaluationProtocol } from '../eval/run.js';
 const skill = readFileSync(new URL('../../SKILL.md', import.meta.url), 'utf8');
 const policy = readFileSync(new URL('../../resources/global-policy.md', import.meta.url), 'utf8');
 const metadata = readFileSync(new URL('../../agents/openai.yaml', import.meta.url), 'utf8');
+const behaviorCases = JSON.parse(
+  readFileSync(new URL('../behavior-cases.json', import.meta.url), 'utf8'),
+);
 const sections = skill.match(/^---\r?\n(?<frontmatter>[\s\S]*?)\r?\n---\r?\n(?<body>[\s\S]*)$/u);
 const description = sections.groups.frontmatter.match(/^description:\s+(.+)$/mu)[1];
 const defaultPrompt = metadata.match(/^\s*default_prompt:\s+"(.*)"$/mu)[1];
@@ -36,16 +39,12 @@ test('every rendered Agent policy stays within the constant-context budget', () 
 });
 
 test('live eval output protocol stays compact without dropping schema fields', () => {
-  const protocols = [
-    evaluationProtocol(
-      { id: 'java-high-value-write', should_invoke: true },
-      'the skill named chinese-code-comments',
-    ),
-    evaluationProtocol(
-      { id: 'read-only-explanation', should_invoke: false },
-      '$chinese-code-comments',
-    ),
-  ];
+  const protocols = behaviorCases.map((definition) => evaluationProtocol(
+    definition,
+    definition.should_invoke
+      ? 'the skill named chinese-code-comments'
+      : '$chinese-code-comments',
+  ));
   for (const protocol of protocols) {
     assert.ok(chars(protocol) <= 500, `evaluation protocol chars=${chars(protocol)}`);
     for (const required of [
@@ -56,5 +55,11 @@ test('live eval output protocol stays compact without dropping schema fields', (
     ]) {
       assert.match(protocol, new RegExp(required));
     }
+    assert.match(protocol, /covered_executable_lines=directly covered executable-statement count/u);
+    assert.match(protocol, /comment_count=comments\.length/u);
+    assert.match(
+      protocol,
+      /independently_commented_statement_count=count whose previous nonblank line is standalone comment/u,
+    );
   }
 });

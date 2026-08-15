@@ -119,7 +119,7 @@ export function evaluationProtocol(caseDefinition, invocation) {
   const useRule = caseDefinition.should_invoke
     ? `Use ${invocation}.`
     : 'Read-only case: do not edit or claim a full-diff workflow.';
-  return `${useRule} Return one raw JSON object: case_id="${caseDefinition.id}"; mode=SCOPED|GROUPED|STRICT; language; code without fences; explanation with mode and review result; comments with each added/updated comment's exact text, kind (line|block|doc), covered_executable_lines; matching comment_count, executable_statement_count, independently_commented_statement_count, json_comments_added. JSON cases add no comments.`;
+  return `${useRule} raw JSON: case_id="${caseDefinition.id}"; mode=SCOPED|GROUPED|STRICT; language; unfenced code; explanation(mode/review); comments(added/updated exact text, kind=line|block|doc, covered_executable_lines=directly covered executable-statement count); comment_count=comments.length; executable_statement_count; independently_commented_statement_count=count whose previous nonblank line is standalone comment; json_comments_added=false for JSON.`;
 }
 
 function buildEvaluationPrompt(caseDefinition, evalDefinition, runner) {
