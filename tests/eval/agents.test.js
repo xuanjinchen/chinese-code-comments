@@ -12,7 +12,13 @@ import { buildInvocation as buildHermes, normalizeOutput as normalizeHermes } fr
 import { RUNNER_IDS, selectRunner } from './agents/index.js';
 import { buildInvocation as buildOpenCode, normalizeOutput as normalizeOpenCode } from './agents/opencode.js';
 import { runProcess } from './process.js';
-import { ALL_CASE_IDS, CORE_CASE_IDS, parseRunArgs, runBehaviorEval } from './run.js';
+import {
+  ALL_CASE_IDS,
+  CORE_CASE_IDS,
+  evaluationProtocol,
+  parseRunArgs,
+  runBehaviorEval,
+} from './run.js';
 
 const input = {
   prompt: '请修改代码并返回 JSON',
@@ -274,6 +280,14 @@ test('eval 入口强制显式选择一个 Agent 并解析 core/full profile', ()
     /--full cannot be combined with --case/,
   );
   assert.throws(
+    () => parseRunArgs(['--agent', 'codex', '--full', '--case', ',']),
+    /--full cannot be combined with --case/,
+  );
+  assert.throws(
+    () => parseRunArgs(['--agent', 'codex', '--case', ',']),
+    /--case requires at least one case id/,
+  );
+  assert.throws(
     () => parseRunArgs(['--agent', 'codex', '--full', '--full']),
     /--full may only be specified once/,
   );
@@ -288,6 +302,24 @@ test('eval 入口强制显式选择一个 Agent 并解析 core/full profile', ()
     'json-no-comments',
     'read-only-explanation',
   ]);
+});
+
+test('evaluationProtocol 区分写入调用与只读负例', () => {
+  const writeProtocol = evaluationProtocol(
+    { id: 'java-high-value-write', should_invoke: true },
+    '$chinese-code-comments',
+  );
+  assert.match(writeProtocol, /Use \$chinese-code-comments/u);
+  assert.match(writeProtocol, /case_id="java-high-value-write"/u);
+  assert.match(writeProtocol, /raw JSON/u);
+
+  const readOnlyProtocol = evaluationProtocol(
+    { id: 'read-only-explanation', should_invoke: false },
+    '$chinese-code-comments',
+  );
+  assert.match(readOnlyProtocol, /Read-only case/u);
+  assert.match(readOnlyProtocol, /do not edit or claim a full-diff workflow/u);
+  assert.doesNotMatch(readOnlyProtocol, /Use \$chinese-code-comments/u);
 });
 
 async function runProfile(context, options = {}) {
@@ -346,6 +378,26 @@ test('runBehaviorEval 在启动 Agent 前拒绝未知案例', async () => {
       },
     }),
     /Unknown behavior eval case: unknown-case/,
+  );
+  assert.equal(invocationCount, 0);
+});
+
+test('runBehaviorEval 在启动 Agent 前拒绝 full 与 caseIds 并用', async () => {
+  let invocationCount = 0;
+  await assert.rejects(
+    runBehaviorEval({
+      agent: 'codex',
+      caseIds: ['json-no-comments'],
+      full: true,
+      runner: {
+        id: 'profile-test',
+        buildInvocation() {
+          invocationCount += 1;
+          throw new Error('Agent must not start');
+        },
+      },
+    }),
+    /full cannot be combined with caseIds/,
   );
   assert.equal(invocationCount, 0);
 });

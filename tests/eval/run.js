@@ -45,6 +45,7 @@ function appendList(target, value) {
 export function parseRunArgs(argv) {
   const agents = [];
   const caseIds = [];
+  let caseOptionSeen = false;
   let full = false;
   let resultsRoot = null;
   let timeoutMs = 120_000;
@@ -55,6 +56,7 @@ export function parseRunArgs(argv) {
       appendList(agents, optionValue(argv, index, argument));
       index += 1;
     } else if (argument === '--case') {
+      caseOptionSeen = true;
       appendList(caseIds, optionValue(argv, index, argument));
       index += 1;
     } else if (argument === '--full') {
@@ -75,7 +77,8 @@ export function parseRunArgs(argv) {
 
   if (agents.length === 0) throw new Error('--agent is required; live evaluation never selects an Agent by default');
   if (agents.length !== 1) throw new Error('Live evaluation requires exactly one --agent value');
-  if (full && caseIds.length > 0) throw new Error('--full cannot be combined with --case');
+  if (full && caseOptionSeen) throw new Error('--full cannot be combined with --case');
+  if (caseOptionSeen && caseIds.length === 0) throw new Error('--case requires at least one case id');
   return { agent: agents[0], caseIds: caseIds.length > 0 ? caseIds : null, full, resultsRoot, timeoutMs };
 }
 
@@ -112,21 +115,16 @@ function invocationName(runner) {
   return runner.id === 'codex' ? '$chinese-code-comments' : 'the skill named chinese-code-comments';
 }
 
+export function evaluationProtocol(caseDefinition, invocation) {
+  const useRule = caseDefinition.should_invoke
+    ? `Use ${invocation}.`
+    : 'Read-only case: do not edit or claim a full-diff workflow.';
+  return `${useRule} Return one raw JSON object: case_id="${caseDefinition.id}"; mode=SCOPED|GROUPED|STRICT; language; code without fences; explanation with mode and review result; comments with each added/updated comment's exact text, kind (line|block|doc), covered_executable_lines; matching comment_count, executable_statement_count, independently_commented_statement_count, json_comments_added. JSON cases add no comments.`;
+}
+
 function buildEvaluationPrompt(caseDefinition, evalDefinition, runner) {
   const original = String(evalDefinition.prompt).replaceAll('$chinese-code-comments', invocationName(runner));
-  const invocationRule = caseDefinition.should_invoke
-    ? `- You must actually use ${invocationName(runner)} and return exactly one JSON object.`
-    : '- This is a read-only negative case: do not modify code or claim a full diff workflow.';
-  return `${original}\n\nEvaluation output protocol:\n${invocationRule}\n`
-    + `- case_id must be "${caseDefinition.id}"; mode must be GROUPED, STRICT, or SCOPED.\n`
-    + '- code contains only the revised code, without Markdown fences.\n'
-    + '- comments lists every added or updated comment; text is the exact body in code and kind is line, block, or doc.\n'
-    + '- covered_executable_lines counts executable statements directly covered by that comment.\n'
-    + '- comment_count equals comments.length.\n'
-    + '- independently_commented_statement_count counts statements whose preceding non-blank line is a standalone comment.\n'
-    + '- json-no-comments must keep comments empty and put all explanation outside code.\n'
-    + '- explanation briefly reports the mode decision and final comment review result.\n'
-    + '- Return raw JSON only, with no Markdown fence or surrounding prose.\n';
+  return `${original}\n\n${evaluationProtocol(caseDefinition, invocationName(runner))}\n`;
 }
 
 function safeWorkspacePath(workspaceRoot, relativePath) {
@@ -194,6 +192,7 @@ export async function runBehaviorEval({
   runner: runnerOverride = null,
 } = {}) {
   if (!agent) throw new Error('--agent is required; live evaluation never selects an Agent by default');
+  if (full && caseIds !== null) throw new Error('full cannot be combined with caseIds');
   const runner = runnerOverride ?? selectRunner(agent);
   const selected = selectedCaseIds(caseIds, full);
   const behaviorCases = await readJson(behaviorCasesPath);

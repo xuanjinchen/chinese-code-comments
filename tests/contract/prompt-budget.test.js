@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import { selectAdapters } from '../../src/adapters/index.js';
 import { renderPolicy } from '../../src/policies/render.js';
+import { evaluationProtocol } from '../eval/run.js';
 
 const skill = readFileSync(new URL('../../SKILL.md', import.meta.url), 'utf8');
 const policy = readFileSync(new URL('../../resources/global-policy.md', import.meta.url), 'utf8');
@@ -30,6 +31,30 @@ test('every rendered Agent policy stays within the constant-context budget', () 
     for (const eol of ['\n', '\r\n']) {
       const renderedChars = chars(renderPolicy(adapter, policy, eol));
       assert.ok(renderedChars <= 450, `${adapter.id} rendered policy chars=${renderedChars}`);
+    }
+  }
+});
+
+test('live eval output protocol stays compact without dropping schema fields', () => {
+  const protocols = [
+    evaluationProtocol(
+      { id: 'java-high-value-write', should_invoke: true },
+      'the skill named chinese-code-comments',
+    ),
+    evaluationProtocol(
+      { id: 'read-only-explanation', should_invoke: false },
+      '$chinese-code-comments',
+    ),
+  ];
+  for (const protocol of protocols) {
+    assert.ok(chars(protocol) <= 500, `evaluation protocol chars=${chars(protocol)}`);
+    for (const required of [
+      'case_id', 'SCOPED', 'GROUPED', 'STRICT', 'code', 'comments',
+      'covered_executable_lines', 'comment_count',
+      'executable_statement_count', 'independently_commented_statement_count',
+      'json_comments_added', 'explanation',
+    ]) {
+      assert.match(protocol, new RegExp(required));
     }
   }
 });
