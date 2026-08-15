@@ -43,6 +43,7 @@ const expectedFiles = [
   'src/transaction.js',
   'src/uninstall.js',
   'tests/contract/behavior-cases.test.js',
+  'tests/contract/prompt-budget.test.js',
   'tests/contract/release-package.test.js',
   'tests/contract/release-management.test.js',
   'tests/contract/skill.test.js',
@@ -141,7 +142,7 @@ function validateSkill(skillText) {
   const description = match[1].match(/^description:\s+(.+)$/mu)?.[1];
   assert.equal(
     description,
-    '在创建、修改、重构或修复任意语言代码时，添加、更新和审核准确、耐维护的代码注释；也用于用户明确要求添加、更新或审查代码注释，以及提出中文注释、指定语言注释、逐行注释、代码块注释、方法、类或 API 文档注释等要求。默认使用简体中文，用户指定语言或项目规范优先。任何语言的逐行等价请求（如 English “line-by-line”、日文“一行ずつ”）只要未包含“每一行都必须”“每条都必须”等显式全称约束，一律按语义块使用 GROUPED；STRICT 仅用于显式全称约束。产生代码写入的任务强制使用两阶段完整 diff 流程；纯只读解释或普通代码审查均不强制。',
+    '在创建、修改、重构或修复代码时使用，也用于用户明确要求生成、更新或审核代码注释；支持任意语言及逐行、代码块、方法、类、API 文档等粒度。普通只读解释或代码审查不隐式触发，明确审核注释除外。',
   );
 }
 
