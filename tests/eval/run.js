@@ -14,10 +14,20 @@ const behaviorCasesPath = path.join(repositoryRoot, 'tests', 'behavior-cases.jso
 const evalsPath = path.join(repositoryRoot, 'evals', 'evals.json');
 
 const evalCatalog = JSON.parse(readFileSync(evalsPath, 'utf8'));
-export const DEFAULT_CASE_IDS = Object.freeze(
-  evalCatalog.evals.map((definition) => definition.case_id).sort(),
+export const ALL_CASE_IDS = Object.freeze(
+  evalCatalog.evals.map((definition) => definition.case_id),
 );
-const DEFAULT_CASE_ID_SET = new Set(DEFAULT_CASE_IDS);
+export const CORE_CASE_IDS = Object.freeze([
+  'java-high-value-write',
+  'c-buffer-fix',
+  'english-grouped-line-comments',
+  'strict-english-per-line',
+  'self-explanatory-write',
+  'preserve-existing-english',
+  'json-no-comments',
+  'read-only-explanation',
+]);
+const ALL_CASE_ID_SET = new Set(ALL_CASE_IDS);
 const ENGLISH_PROJECT_RULE_CASES = new Set(['project-convention-english', 'french-method-doc']);
 
 function optionValue(argv, index, option) {
@@ -35,6 +45,7 @@ function appendList(target, value) {
 export function parseRunArgs(argv) {
   const agents = [];
   const caseIds = [];
+  let full = false;
   let resultsRoot = null;
   let timeoutMs = 120_000;
 
@@ -46,6 +57,9 @@ export function parseRunArgs(argv) {
     } else if (argument === '--case') {
       appendList(caseIds, optionValue(argv, index, argument));
       index += 1;
+    } else if (argument === '--full') {
+      if (full) throw new Error('--full may only be specified once');
+      full = true;
     } else if (argument === '--results-root') {
       resultsRoot = optionValue(argv, index, argument);
       index += 1;
@@ -61,7 +75,8 @@ export function parseRunArgs(argv) {
 
   if (agents.length === 0) throw new Error('--agent is required; live evaluation never selects an Agent by default');
   if (agents.length !== 1) throw new Error('Live evaluation requires exactly one --agent value');
-  return { agent: agents[0], caseIds: caseIds.length > 0 ? caseIds : null, resultsRoot, timeoutMs };
+  if (full && caseIds.length > 0) throw new Error('--full cannot be combined with --case');
+  return { agent: agents[0], caseIds: caseIds.length > 0 ? caseIds : null, full, resultsRoot, timeoutMs };
 }
 
 async function readJson(filePath) {
@@ -149,10 +164,12 @@ function failureGrading(caseId, error) {
   };
 }
 
-function selectedCaseIds(caseIds) {
-  const selected = caseIds == null ? [...DEFAULT_CASE_IDS] : [...new Set(caseIds)];
+function selectedCaseIds(caseIds, full) {
+  const selected = caseIds == null
+    ? [...(full ? ALL_CASE_IDS : CORE_CASE_IDS)]
+    : [...new Set(caseIds)];
   for (const id of selected) {
-    if (!DEFAULT_CASE_ID_SET.has(id)) throw new Error(`Unknown behavior eval case: ${id}`);
+    if (!ALL_CASE_ID_SET.has(id)) throw new Error(`Unknown behavior eval case: ${id}`);
   }
   return selected;
 }
@@ -172,12 +189,13 @@ export async function runBehaviorEval({
   agent,
   resultsRoot = null,
   caseIds = null,
+  full = false,
   timeoutMs = 120_000,
   runner: runnerOverride = null,
 } = {}) {
   if (!agent) throw new Error('--agent is required; live evaluation never selects an Agent by default');
   const runner = runnerOverride ?? selectRunner(agent);
-  const selected = selectedCaseIds(caseIds);
+  const selected = selectedCaseIds(caseIds, full);
   const behaviorCases = await readJson(behaviorCasesPath);
   const evalDocument = await readJson(evalsPath);
   const behaviorById = new Map(behaviorCases.map((definition) => [definition.id, definition]));

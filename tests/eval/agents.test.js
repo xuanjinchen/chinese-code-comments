@@ -12,7 +12,7 @@ import { buildInvocation as buildHermes, normalizeOutput as normalizeHermes } fr
 import { RUNNER_IDS, selectRunner } from './agents/index.js';
 import { buildInvocation as buildOpenCode, normalizeOutput as normalizeOpenCode } from './agents/opencode.js';
 import { runProcess } from './process.js';
-import { DEFAULT_CASE_IDS, parseRunArgs, runBehaviorEval } from './run.js';
+import { ALL_CASE_IDS, CORE_CASE_IDS, parseRunArgs, runBehaviorEval } from './run.js';
 
 const input = {
   prompt: '请修改代码并返回 JSON',
@@ -250,18 +250,104 @@ test('Codex 普通文本模式移除 schema 但仍写入最终消息', () => {
   assert.equal(codex.stdin, input.prompt);
 });
 
-test('eval 入口强制显式选择一个 Agent', () => {
+test('eval 入口强制显式选择一个 Agent 并解析 core/full profile', () => {
   assert.throws(() => parseRunArgs([]), /--agent is required/);
   assert.throws(() => parseRunArgs(['--agent', 'codex,claude']), /exactly one --agent/);
   assert.throws(() => parseRunArgs(['--agent', 'codex', '--agent', 'claude']), /exactly one --agent/);
-  assert.deepEqual(parseRunArgs(['--agent', 'codex', '--case', 'self-explanatory-write,json-no-comments']), {
+  assert.deepEqual(parseRunArgs(['--agent', 'codex']), {
     agent: 'codex',
-    caseIds: ['self-explanatory-write', 'json-no-comments'],
+    caseIds: null,
+    full: false,
     resultsRoot: null,
     timeoutMs: 120_000,
   });
-  assert.equal(DEFAULT_CASE_IDS.length, 20);
-  assert.equal(DEFAULT_CASE_IDS.includes('read-only-explanation'), true);
+  assert.deepEqual(parseRunArgs(['--agent', 'codex', '--case', 'self-explanatory-write,json-no-comments']), {
+    agent: 'codex',
+    caseIds: ['self-explanatory-write', 'json-no-comments'],
+    full: false,
+    resultsRoot: null,
+    timeoutMs: 120_000,
+  });
+  assert.equal(parseRunArgs(['--agent', 'codex', '--full']).full, true);
+  assert.throws(
+    () => parseRunArgs(['--agent', 'codex', '--full', '--case', 'json-no-comments']),
+    /--full cannot be combined with --case/,
+  );
+  assert.throws(
+    () => parseRunArgs(['--agent', 'codex', '--full', '--full']),
+    /--full may only be specified once/,
+  );
+  assert.equal(ALL_CASE_IDS.length, 20);
+  assert.deepEqual(CORE_CASE_IDS, [
+    'java-high-value-write',
+    'c-buffer-fix',
+    'english-grouped-line-comments',
+    'strict-english-per-line',
+    'self-explanatory-write',
+    'preserve-existing-english',
+    'json-no-comments',
+    'read-only-explanation',
+  ]);
+});
+
+async function runProfile(context, options = {}) {
+  const directory = await mkdtemp(path.join(tmpdir(), 'ccc-eval-profile-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  let invocationCount = 0;
+  const runner = {
+    id: 'profile-test',
+    projectRulesFile: 'AGENTS.md',
+    buildInvocation() {
+      invocationCount += 1;
+      return {
+        command: process.execPath,
+        args: ['-e', "process.stdout.write('not-json')"],
+        stdin: null,
+        env: {},
+      };
+    },
+    normalizeOutput(result) {
+      return { finalText: result.stdout, events: [] };
+    },
+  };
+  const summary = await runBehaviorEval({
+    agent: 'codex',
+    resultsRoot: path.join(directory, 'results'),
+    runner,
+    ...options,
+  });
+  return { invocationCount, summary };
+}
+
+test('runBehaviorEval 默认执行 8 个 core 案例', async (context) => {
+  const { invocationCount, summary } = await runProfile(context);
+  assert.equal(invocationCount, 8);
+  assert.deepEqual(summary.cases.map(({ caseId }) => caseId), CORE_CASE_IDS);
+});
+
+test('runBehaviorEval full profile 执行全部 20 个案例', async (context) => {
+  const { invocationCount, summary } = await runProfile(context, { full: true });
+  assert.equal(invocationCount, 20);
+  assert.deepEqual(summary.cases.map(({ caseId }) => caseId), ALL_CASE_IDS);
+});
+
+test('runBehaviorEval 在启动 Agent 前拒绝未知案例', async () => {
+  let invocationCount = 0;
+  await assert.rejects(
+    runBehaviorEval({
+      agent: 'codex',
+      caseIds: ['unknown-case'],
+      runner: {
+        id: 'profile-test',
+        buildInvocation() {
+          invocationCount += 1;
+          throw new Error('Agent must not start');
+        },
+      },
+    }),
+    /Unknown behavior eval case: unknown-case/,
+  );
+  assert.equal(invocationCount, 0);
 });
 
 test('runBehaviorEval 将非法 JSON 记为案例失败并继续后续案例', async (context) => {
@@ -300,6 +386,8 @@ test('runBehaviorEval 将非法 JSON 记为案例失败并继续后续案例', a
   });
 
   assert.equal(summary.cases.length, 2);
+  assert.equal(invocationCount, 2);
+  assert.deepEqual(summary.cases.map(({ caseId }) => caseId), ['self-explanatory-write', 'json-no-comments']);
   assert.deepEqual(summary.cases.map(({ passed }) => passed), [false, true]);
 });
 

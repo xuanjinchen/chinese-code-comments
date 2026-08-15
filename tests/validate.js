@@ -126,6 +126,7 @@ function validatePackage(packageJson) {
     validate: 'node tests/validate.js',
     check: 'npm test && npm run validate',
     eval: 'node tests/eval/run.js',
+    'eval:full': 'node tests/eval/run.js --full',
     smoke: 'node tests/eval/smoke.js',
     'release:pack': 'node scripts/release-pack.js',
   });

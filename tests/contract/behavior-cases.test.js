@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractComments } from '../eval/comments.js';
 import { gradeCase } from '../eval/grader.js';
-import { DEFAULT_CASE_IDS } from '../eval/run.js';
+import { ALL_CASE_IDS, CORE_CASE_IDS } from '../eval/run.js';
 import { validateResponse } from '../eval/schema.js';
 import { isStructurallyValid, validateCaseSyntax, validateSyntax } from '../eval/syntax.js';
 
@@ -55,10 +55,22 @@ test('eval 目录使用唯一字符串 case_id 与行为目录完整关联', () 
   assert.deepEqual([...evalCaseIds].sort(), cases.map(({ id }) => id).sort());
 });
 
-test('默认 eval 目录覆盖全部显式 case_id 并包含只读解释案例', () => {
+test('full eval 覆盖全部定义且 core eval 是唯一有效子集', () => {
   const evalCaseIds = evalDocument.evals.map(({ case_id: caseId }) => caseId);
-  assert.deepEqual(DEFAULT_CASE_IDS, [...evalCaseIds].sort());
-  assert.ok(DEFAULT_CASE_IDS.includes('read-only-explanation'));
+  assert.deepEqual(ALL_CASE_IDS, evalCaseIds);
+  assert.equal(ALL_CASE_IDS.length, 20);
+  assert.deepEqual(CORE_CASE_IDS, [
+    'java-high-value-write',
+    'c-buffer-fix',
+    'english-grouped-line-comments',
+    'strict-english-per-line',
+    'self-explanatory-write',
+    'preserve-existing-english',
+    'json-no-comments',
+    'read-only-explanation',
+  ]);
+  assert.equal(new Set(CORE_CASE_IDS).size, CORE_CASE_IDS.length);
+  assert.ok(CORE_CASE_IDS.every((caseId) => ALL_CASE_IDS.includes(caseId)));
 });
 
 test('每条行为定义都保留必填字段和字段类型', () => {
