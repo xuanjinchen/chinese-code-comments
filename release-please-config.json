@@ -5,7 +5,10 @@
       "release-type": "node",
       "include-v-in-tag": true,
       "include-v-in-release-name": true,
-      "include-component-in-tag": false
+      "include-component-in-tag": false,
+      "extra-files": [
+        "README.md"
+      ]
     }
   }
 }

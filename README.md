@@ -33,6 +33,8 @@
 
 运行 GitHub `npx` 完整安装器：
 
+<!-- x-release-please-start-version -->
+
 ```bash
 npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install
 ```
@@ -215,6 +217,8 @@ npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 un
 ```bash
 npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 uninstall
 ```
+
+<!-- x-release-please-end -->
 
 卸载器只删除本项目托管的 Skill 文件、状态条目和全局规则区块。规则文件和 Skill 目录中的非托管内容会保留；重复卸载成功返回。
 

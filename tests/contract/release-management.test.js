@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -24,6 +24,7 @@ test('Release Please 与当前包版本保持一致', async () => {
   assert.equal(rootPackage?.['include-v-in-tag'], true);
   assert.equal(rootPackage?.['include-v-in-release-name'], true);
   assert.equal(rootPackage?.['include-component-in-tag'], false);
+  assert.deepEqual(rootPackage?.['extra-files'], ['README.md']);
   assert.equal(manifest['.'], packageJson.version);
 });
 
@@ -118,10 +119,10 @@ test('Release 工作流幂等创建版本并上传两个资产', async () => {
 });
 
 test('GitHub Actions 全部固定不可变的提交 SHA', async () => {
-  const workflowPaths = [
-    '.github/workflows/ci.yml',
-    '.github/workflows/release.yml',
-  ];
+  const workflowDirectory = path.join(repositoryRoot, '.github', 'workflows');
+  const workflowPaths = (await readdir(workflowDirectory))
+    .filter((file) => /\.ya?ml$/u.test(file))
+    .map((file) => path.join('.github', 'workflows', file));
 
   for (const workflowPath of workflowPaths) {
     const workflow = await readFile(path.join(repositoryRoot, workflowPath), 'utf8');
@@ -158,4 +159,6 @@ test('README 说明统一版本维护流程', async () => {
   assert.match(readme, /Release PR/u);
   assert.match(readme, /npm run release:pack/u);
   assert.match(readme, /不发布到 npm Registry/u);
+  assert.match(readme, /x-release-please-start-version/u);
+  assert.match(readme, /x-release-please-end/u);
 });

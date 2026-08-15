@@ -81,7 +81,7 @@
 - Modify: `tests/validate.js`
 
 - [ ] 先增加会因稳定命令引用 `main` 而失败的验证断言，并确认失败原因正确。
-- [ ] 将稳定 GitHub `npx` 命令固定为 `git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1`。
+- [ ] 将稳定 GitHub `npx` 命令固定为当前 Release，并配置 Release Please 在后续发布时同步升级 README。
 - [ ] 保留单独标注的 `#main` 开发安装命令，并说明其不保证稳定。
 - [ ] 运行 `npm run validate` 并确认通过。
 

@@ -161,12 +161,12 @@ function validateOpenAiMetadata(metadata) {
   assert.match(metadata, /^\s{2}allow_implicit_invocation:\s+true$/mu);
 }
 
-function validateReadme(readme) {
+function validateReadme(readme, version) {
   const requiredSnippets = [
     'Node.js 22',
-    'npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install',
+    `npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v${version} install`,
     'npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#main install',
-    'npx skills add xuanjinchen/chinese-code-comments#v0.1.1 -g --all',
+    `npx skills add xuanjinchen/chinese-code-comments#v${version} -g --all`,
     'install --agent',
     'uninstall --agent',
     'doctor --agent',
@@ -260,7 +260,7 @@ async function main() {
   validatePackage(packageJson);
   validateSkill(await readUtf8('SKILL.md'));
   validateOpenAiMetadata(await readUtf8('agents/openai.yaml'));
-  validateReadme(await readUtf8('README.md'));
+  validateReadme(await readUtf8('README.md'), packageJson.version);
   await validateCli(packageJson);
   validateCi(await readUtf8('.github/workflows/ci.yml'));
   validateReleaseWorkflow(await readUtf8('.github/workflows/release.yml'));
