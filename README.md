@@ -36,7 +36,7 @@
 <!-- x-release-please-start-version -->
 
 ```bash
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 install
 ```
 
 需要验证尚未发布的开发版本时，显式使用 `main`；该入口可能随提交变化，不保证稳定：
@@ -54,7 +54,7 @@ npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#main inst
 也可以使用 Agent Skills 标准入口：
 
 ```bash
-npx skills add xuanjinchen/chinese-code-comments#v0.1.1 -g --all
+npx skills add xuanjinchen/chinese-code-comments#v0.2.0 -g --all
 ```
 
 两个入口的能力不同：
@@ -193,8 +193,8 @@ Hermes 会扫描隐藏 HTML 注释，因此安装器在 `~/.hermes/SOUL.md` 中�
 `install`、`uninstall` 和 `doctor` 不带 `--agent` 时默认处理全部六个 Agent。`--agent` 接受逗号分隔值，也可以重复传入：
 
 ```bash
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install --agent codex
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install --agent codex,gemini --agent hermes
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 install --agent codex
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 install --agent codex,gemini --agent hermes
 ```
 
 安装器允许在对应 Agent CLI 尚未安装时预先创建配置。请使用表格中的规范 ID；未知或空 ID 会在写文件前失败，重复 ID 会被确定性去重。
@@ -204,8 +204,8 @@ npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 in
 `install` 同时负责首次安装和幂等升级。再次运行相同命令即可更新已选 Agent：
 
 ```bash
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 install --agent claude
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 install
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 install --agent claude
 ```
 
 更新后新建 Agent 任务，使新的 Skill 和全局规则生效。
@@ -215,8 +215,8 @@ npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 in
 `doctor` 是只读检查。它会核对 Skill 内容、全局受管区块、安装状态和共享存储组引用，并报告对应 CLI 是否在 `PATH` 中：
 
 ```bash
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 doctor
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 doctor --agent codex
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 doctor
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 doctor --agent codex
 ```
 
 CLI 缺失只作为信息展示，不会使已经正确写入的配置失效。Skill、策略或状态不一致时，`doctor` 返回非零退出码。
@@ -226,13 +226,13 @@ CLI 缺失只作为信息展示，不会使已经正确写入的配置失效。S
 只卸载指定 Agent：
 
 ```bash
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 uninstall --agent codex
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 uninstall --agent codex
 ```
 
 卸载全部六个 Agent：
 
 ```bash
-npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.1.1 uninstall
+npx --yes git+https://github.com/xuanjinchen/chinese-code-comments.git#v0.2.0 uninstall
 ```
 
 <!-- x-release-please-end -->
