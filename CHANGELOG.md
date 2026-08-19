@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0](https://github.com/xuanjinchen/chinese-code-comments/compare/v0.1.1...v0.2.0) (2026-08-19)
+
+
+### Features
+
+* add contract-oriented declaration comments ([#9](https://github.com/xuanjinchen/chinese-code-comments/issues/9)) ([1d37fcb](https://github.com/xuanjinchen/chinese-code-comments/commit/1d37fcb83bd4cd86adddef61d25445ce45224cd1))
+
+
+### Bug Fixes
+
+* harden installer and release maintenance ([#7](https://github.com/xuanjinchen/chinese-code-comments/issues/7)) ([f572664](https://github.com/xuanjinchen/chinese-code-comments/commit/f572664cf87dba7e22026054b9421bf214e80763))
+* keep release install links current ([fd4df2c](https://github.com/xuanjinchen/chinese-code-comments/commit/fd4df2c4d059528d0318635bcce331c67e768b79))
+* preserve compact eval counting semantics ([2e247e0](https://github.com/xuanjinchen/chinese-code-comments/commit/2e247e0d037bbc82ea34f49a775fa2fd9f8c7fa1))
+
+
+### Performance Improvements
+
+* add core live eval profile ([6d90623](https://github.com/xuanjinchen/chinese-code-comments/commit/6d9062354b9141c22572c4845c6d517393166c11))
+* compact live eval protocol ([68c55e1](https://github.com/xuanjinchen/chinese-code-comments/commit/68c55e12935f0f79e5842b1b3f0e84545dac33dc))
+* reduce runtime prompt payload ([e956fca](https://github.com/xuanjinchen/chinese-code-comments/commit/e956fca14a8cfe958dd7518fa0ceb6b3ab2b028d))
+
 ## [0.1.1](https://github.com/xuanjinchen/chinese-code-comments/compare/v0.1.0...v0.1.1) (2026-08-14)
 
 
