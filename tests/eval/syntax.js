@@ -127,6 +127,10 @@ export function isStructurallyValid(language, code) {
 
 const CASE_LANGUAGES = new Map([
   ['java-high-value-write', 'java'],
+  ['public-api-method-doc', 'java'],
+  ['interface-contract-doc', 'typescript'],
+  ['private-method-selection', 'typescript'],
+  ['interface-implementation-no-duplicate', 'typescript'],
   ['japanese-method-doc', 'java'],
   ['french-method-doc', 'java'],
   ['c-buffer-fix', 'c'],
@@ -191,7 +195,9 @@ export async function validateSyntax(language, source, {
         { command: 'python3', label: 'python3' },
         { command: 'python', label: 'python' },
       ]
-    : normalized === 'java'
+    : normalized === 'typescript'
+      ? [{ command: process.execPath, label: 'node --experimental-strip-types' }]
+      : normalized === 'java'
       ? [{ command: 'javac', label: 'javac' }]
       : normalized === 'c'
         ? ['cc', 'gcc', 'clang'].map((command) => ({ command, label: command }))
@@ -222,23 +228,25 @@ export async function validateSyntax(language, source, {
 
   const workspace = await mkdtemp(path.join(tmpdir(), `chinese-code-comments-${normalized}-syntax-`));
   try {
-    const extension = { java: '.java', c: '.c', cpp: '.cpp' }[normalized];
+    const extension = { typescript: '.ts', java: '.java', c: '.c', cpp: '.cpp' }[normalized];
     const publicJavaType = normalized === 'java'
       ? source.match(/\bpublic\s+(?:(?:final|abstract|sealed|non-sealed)\s+)*(?:class|interface|enum|record)\s+(?<name>[A-Za-z_]\w*)/u)?.groups.name
       : null;
     const sourcePath = path.join(workspace, `${publicJavaType ?? 'EvalSource'}${extension}`);
     await writeFile(sourcePath, source, 'utf8');
-    const args = normalized === 'java'
-      ? ['-proc:none', '-d', workspace, sourcePath]
-      : normalized === 'c'
-        ? ['-x', 'c', '-fsyntax-only', sourcePath]
-        : ['-x', 'c++', '-std=c++17', '-fsyntax-only', sourcePath];
+    const args = normalized === 'typescript'
+      ? ['--experimental-strip-types', '--check', sourcePath]
+      : normalized === 'java'
+        ? ['-proc:none', '-d', workspace, sourcePath]
+        : normalized === 'c'
+          ? ['-x', 'c', '-fsyntax-only', sourcePath]
+          : ['-x', 'c++', '-std=c++17', '-fsyntax-only', sourcePath];
     return {
       language: normalized,
       ...await runValidation(tool, { args, cwd: workspace, stdin: null, env, timeoutMs }),
     };
   } finally {
-    // 编译器只验证 Agent 返回源码，临时产物不进入评测工作区或最终证据。
+    // 解析器或编译器只验证 Agent 返回源码，临时产物不进入评测工作区或最终证据。
     await rm(workspace, { recursive: true, force: true });
   }
 }
@@ -249,6 +257,12 @@ function sourceForCase(caseId, language, code) {
       + 'interface LedgerRepository { void save(LedgerEntry entry); }\n'
       + 'record LedgerEntry(String eventId, BigDecimal amount) {}\n'
       + 'class DuplicateKeyException extends RuntimeException {}\n';
+  }
+  if (caseId === 'public-api-method-doc') {
+    return `import java.util.Optional;\n${code}\n`
+      + 'interface OrderRepository { Optional<OrderSummary> findSummary(String orderId); }\n'
+      + 'record OrderSummary(String id) {}\n'
+      + 'class OrderNotFoundException extends RuntimeException { OrderNotFoundException(String id) {} }\n';
   }
   if (caseId === 'japanese-method-doc' || caseId === 'french-method-doc') {
     return 'import java.util.Optional;\n'

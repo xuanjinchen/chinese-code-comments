@@ -261,6 +261,58 @@
         "explanation 说明空输入边界与后续平均值计算。",
         "不声称执行写入任务的完整 diff 注释流程。"
       ]
+    },
+    {
+      "id": 21,
+      "case_id": "public-api-method-doc",
+      "prompt": "在下面的 OrderQueryService 中新增 public OrderSummary getOrderSummary(String orderId) 方法，通过 repository.findSummary 查询；找不到订单时抛出 OrderNotFoundException。用户没有单独提出注释要求。\n\n```java\npublic final class OrderQueryService {\n    private final OrderRepository repository;\n\n    public OrderQueryService(OrderRepository repository) {\n        this.repository = repository;\n    }\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN，返回可编译 Java；新增查询方法及一条简洁 Javadoc，说明订单摘要查询职责、业务目标和未找到订单的调用方可观察行为。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "公开方法实现 repository.findSummary，并在结果缺失时抛出 OrderNotFoundException。",
+        "新增且只新增一条位于方法声明前的中文 doc 注释，不强制 @param、@return 或 @throws 标签。",
+        "注释说明查询订单摘要的业务目标及未找到订单的可观察行为，并报告完整注释审查。"
+      ]
+    },
+    {
+      "id": 22,
+      "case_id": "interface-contract-doc",
+      "prompt": "为支付模块新增下面的 TypeScript PaymentGateway 接口，公开 authorize 授权操作。用户没有单独提出注释要求。\n\n```typescript\nexport interface PaymentGateway {\n  authorize(request: PaymentRequest): Promise<AuthorizationResult>;\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN；在接口声明处新增且只新增一条简洁 TSDoc，说明支付授权职责和实现者契约，不重复注释清晰的 authorize 成员。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "保留导出的 PaymentGateway 接口和 authorize 契约。",
+        "接口声明前只有一条中文 doc 注释，authorize 成员前没有重复同义注释。",
+        "注释说明支付授权职责或实现者对调用方承担的契约，并报告完整注释审查。"
+      ]
+    },
+    {
+      "id": 23,
+      "case_id": "private-method-selection",
+      "prompt": "在下面的 TypeScript 类中新增 public getCurrency() 简单 getter，以及 private roundReceivable(amount) 方法；后者必须把金额向上取整到分，避免结算少收。用户没有单独提出注释要求。\n\n```typescript\nexport class SettlementCalculator {\n  private readonly currency: string;\n\n  public constructor(currency: string) {\n    this.currency = currency;\n  }\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN；只在 private roundReceivable 声明处添加一条简洁注释说明向上取整与避免少收的业务约束，不注释简单 getCurrency getter。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "getCurrency 直接返回 currency，roundReceivable 使用向上取整保留两位小数。",
+        "只新增一条中文注释并紧邻 roundReceivable，getCurrency 前没有注释。",
+        "注释说明结算向上取整用于避免少收，并报告完整注释审查。"
+      ]
+    },
+    {
+      "id": 24,
+      "case_id": "interface-implementation-no-duplicate",
+      "prompt": "为下面已文档化的 TypeScript 接口新增 StripePaymentGateway 实现；authorize 直接返回 client.authorize(request)，没有额外约束或行为差异。用户没有单独提出注释要求。\n\n```typescript\n/** 统一支付授权入口，实现必须返回调用方可处理的授权结果。 */\nexport interface PaymentGateway {\n  authorize(request: PaymentRequest): Promise<AuthorizationResult>;\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN；保留既有接口注释，新增透明实现但不重复同义类或方法注释，并明确报告无需新增注释。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "StripePaymentGateway implements PaymentGateway，authorize 直接委托 client.authorize。",
+        "既有接口注释原样保留，comments 为空，新增实现没有重复注释。",
+        "explanation 报告完整审查并说明无需新增注释。"
+      ]
     }
   ]
 }

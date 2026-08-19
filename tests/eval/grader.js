@@ -7,6 +7,10 @@ const CASE_LANGUAGES = {
   'java-high-value-write': 'java',
   'react-state-sync': 'typescript',
   'self-explanatory-write': 'typescript',
+  'public-api-method-doc': 'java',
+  'interface-contract-doc': 'typescript',
+  'private-method-selection': 'typescript',
+  'interface-implementation-no-duplicate': 'typescript',
   'c-buffer-fix': 'c',
   'japanese-method-doc': 'java',
   'grouped-line-comments': 'python',
@@ -270,6 +274,63 @@ export function gradeCase(definition, response, { syntaxResult = null } = {}) {
       add('Code does not swallow unrelated failures', !/catch\s*\(\s*(?:[\w.]+\.)?(?:Exception|Throwable)\b/u.test(visible), 'Checked for broad Exception or Throwable catch clauses.');
       add('Comments capture the authoritative deduplication constraint', /唯一|幂等|去重/u.test(joinedComments), `Comment text: ${joinedComments}`);
       add('Comments capture duplicate, transaction, retry, or concurrency semantics', /重复|事务|重试|并发/u.test(joinedComments), `Comment text: ${joinedComments}`);
+      break;
+    }
+    case 'public-api-method-doc': {
+      add('Returned public API Java passes syntax validation', syntaxValid('java'), syntaxEvidence);
+      const visible = codeOnly('java', response.code).code;
+      const method = visible.match(/public\s+OrderSummary\s+getOrderSummary\s*\(\s*String\s+orderId\s*\)\s*\{(?<body>[\s\S]*?)\}/u);
+      const implemented = method
+        && /repository\s*\.\s*findSummary\s*\(\s*orderId\s*\)/u.test(method.groups.body)
+        && /orElseThrow\s*\([\s\S]*?OrderNotFoundException/u.test(method.groups.body);
+      add('Public API method implements summary lookup and missing-order failure', implemented, 'Checked repository lookup and OrderNotFoundException behavior.');
+      const adjacentDoc = /\/\*\*[\s\S]*?\*\/\s*public\s+OrderSummary\s+getOrderSummary/u.test(response.code);
+      add('Public API method has one adjacent declaration doc', commentCount === 1 && comments[0].kind === 'doc' && adjacentDoc, `comments=${commentCount}; adjacent=${adjacentDoc}.`);
+      const semantic = /订单|order/iu.test(joinedComments)
+        && /摘要|summary/iu.test(joinedComments)
+        && /查询|检索|读取|展示|query|retrieve|load|display/iu.test(joinedComments)
+        && /不存在|未找到|找不到|缺失|失败|not\s+found|missing|fail/iu.test(joinedComments);
+      const contradicts = /(?:不|没有|未|并非)(?:查询|检索|读取|展示)|(?:不会|不能|不应|无需|没有|未|并非)[^，。;]{0,12}(?:失败|抛出|报错)|(?:失败|抛出|报错)[^，。;]{0,8}(?:不会发生|不存在|没有|并非)|does\s+not[^.;]{0,20}(?:query|retrieve|load|fail)|won't[^.;]{0,12}fail/iu.test(joinedComments);
+      add('Public API doc explains purpose and observable missing-order behavior', semantic && !contradicts, `Comment text: ${joinedComments}`);
+      break;
+    }
+    case 'interface-contract-doc': {
+      const visible = codeOnly('typescript', response.code).code;
+      const interfaceBody = visible.match(/export\s+interface\s+PaymentGateway\s*\{(?<body>[^{}]*)\}/u)?.groups.body;
+      const contract = Boolean(interfaceBody && /authorize\s*\(\s*request\s*:\s*PaymentRequest\s*\)\s*:\s*Promise\s*<\s*AuthorizationResult\s*>\s*;?/u.test(interfaceBody));
+      add('TypeScript preserves the exported payment authorization contract', syntaxValid('typescript') && contract, syntaxEvidence);
+      const adjacentDoc = /\/\*\*[\s\S]*?\*\/\s*export\s+interface\s+PaymentGateway/u.test(response.code);
+      add('Interface has one declaration doc without member duplication', commentCount === 1 && comments[0].kind === 'doc' && adjacentDoc, `comments=${commentCount}; adjacent=${adjacentDoc}.`);
+      const semantic = /支付|payment/iu.test(joinedComments)
+        && /授权|authoriz/iu.test(joinedComments)
+        && /实现|implement|调用方|caller|必须|契约|返回|保证/iu.test(joinedComments);
+      const contradicts = /无契约|(?:不存在|没有|并非)[^，。;]{0,8}(?:契约|保证|义务|责任)|(?:不|未|没有)[^，。;]{0,8}(?:承担|获得|返回|保证)|(?:契约|保证|义务|责任)[^，。;]{0,8}(?:不存在|没有|并非|不成立|无效)|不应|无需|no\s+contract|does\s+not|without/iu.test(joinedComments);
+      add('Interface doc explains responsibility and implementer contract', semantic && !contradicts, `Comment text: ${joinedComments}`);
+      break;
+    }
+    case 'private-method-selection': {
+      const visible = codeOnly('typescript', response.code).code;
+      const getter = /public\s+getCurrency\s*\(\s*\)\s*:\s*string\s*\{\s*return\s+this\.currency\s*;?\s*\}/u.test(visible);
+      const rounding = /private\s+roundReceivable\s*\(\s*amount\s*:\s*number\s*\)\s*:\s*number\s*\{\s*return\s+Math\.ceil\s*\(\s*amount\s*\*\s*100\s*\)\s*\/\s*100\s*;?\s*\}/u.test(visible);
+      add('TypeScript implements the trivial getter and constrained private method', syntaxValid('typescript') && getter && rounding, syntaxEvidence);
+      const adjacentPrivateComment = /(?:\/\*\*?[\s\S]*?\*\/|\/\/[^\r\n]*)\s*private\s+roundReceivable/u.test(response.code);
+      const getterDocumented = /(?:\/\*\*?[\s\S]*?\*\/|\/\/[^\r\n]*)\s*public\s+getCurrency/u.test(response.code);
+      add('Only the constrained private method receives a declaration comment', commentCount === 1 && adjacentPrivateComment && !getterDocumented, `comments=${commentCount}; private=${adjacentPrivateComment}; getter=${getterDocumented}.`);
+      add('Private method doc explains upward rounding and under-collection risk', /向上|进位|ceil/iu.test(joinedComments) && /少收|应收|结算|精度/iu.test(joinedComments), `Comment text: ${joinedComments}`);
+      break;
+    }
+    case 'interface-implementation-no-duplicate': {
+      const visible = codeOnly('typescript', response.code).code;
+      const interfaceBody = visible.match(/export\s+interface\s+PaymentGateway\s*\{(?<body>[^{}]*)\}/u)?.groups.body;
+      const interfaceContract = Boolean(interfaceBody && /authorize\s*\(\s*request\s*:\s*PaymentRequest\s*\)\s*:\s*Promise\s*<\s*AuthorizationResult\s*>\s*;?/u.test(interfaceBody));
+      const implementsContract = /class\s+StripePaymentGateway\s+implements\s+PaymentGateway/u.test(visible);
+      const delegates = /authorize\s*\(\s*request\s*:\s*PaymentRequest\s*\)\s*:\s*Promise\s*<\s*AuthorizationResult\s*>\s*\{\s*return\s+this\.client\.authorize\s*\(\s*request\s*\)\s*;?\s*\}/u.test(visible);
+      add('TypeScript implementation transparently preserves the interface contract', syntaxValid('typescript') && implementsContract && delegates, syntaxEvidence);
+      const preserved = response.code.split('统一支付授权入口，实现必须返回调用方可处理的授权结果。').length - 1 === 1;
+      const adjacentInterfaceDoc = /\/\*\*[\s\S]*?\*\/\s*export\s+interface\s+PaymentGateway/u.test(response.code);
+      const sourceComments = extractComments('typescript', response.code);
+      add('Implementation preserves one interface doc without duplication', interfaceContract && preserved && adjacentInterfaceDoc && commentCount === 0 && sourceComments.length === 1, `interface=${interfaceContract}; adjacent=${adjacentInterfaceDoc}; preserved=${preserved}; reported=${commentCount}; source=${sourceComments.length}.`);
+      add('Final review explains why the transparent implementation needs no new comment', /(?:无需|不需|没有|未)[^。；;]{0,20}(?:新增|添加)?[^。；;]{0,8}注释/iu.test(response.explanation), `Explanation: ${response.explanation}`);
       break;
     }
     case 'c-buffer-fix': {

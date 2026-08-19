@@ -19,6 +19,10 @@ const expectedCoverage = {
   'java-high-value-write': [true, 'zh-CN', 'default'],
   'react-state-sync': [true, 'zh-CN', 'default'],
   'self-explanatory-write': [true, 'zh-CN', 'default'],
+  'public-api-method-doc': [true, 'zh-CN', 'method'],
+  'interface-contract-doc': [true, 'zh-CN', 'api'],
+  'private-method-selection': [true, 'zh-CN', 'default'],
+  'interface-implementation-no-duplicate': [true, 'zh-CN', 'default'],
   'c-buffer-fix': [true, 'zh-CN', 'default'],
   'japanese-method-doc': [true, 'ja', 'method'],
   'grouped-line-comments': [true, 'zh-CN', 'grouped-line'],
@@ -38,9 +42,9 @@ const expectedCoverage = {
   'terraform-rolling-availability': [true, 'zh-CN', 'default'],
 };
 
-test('行为目录保留 20 条定义和 19 条 deterministic grader 案例', () => {
-  assert.equal(cases.length, 20);
-  assert.equal(cases.filter(({ id }) => id !== 'read-only-explanation').length, 19);
+test('行为目录保留 24 条定义和 23 条 deterministic grader 案例', () => {
+  assert.equal(cases.length, 24);
+  assert.equal(cases.filter(({ id }) => id !== 'read-only-explanation').length, 23);
   assert.equal(new Set(cases.map(({ id }) => id)).size, cases.length);
 });
 
@@ -58,14 +62,14 @@ test('eval 目录使用唯一字符串 case_id 与行为目录完整关联', () 
 test('full eval 覆盖全部定义且 core eval 是唯一有效子集', () => {
   const evalCaseIds = evalDocument.evals.map(({ case_id: caseId }) => caseId);
   assert.deepEqual(ALL_CASE_IDS, evalCaseIds);
-  assert.equal(ALL_CASE_IDS.length, 20);
+  assert.equal(ALL_CASE_IDS.length, 24);
   assert.deepEqual(CORE_CASE_IDS, [
-    'java-high-value-write',
+    'public-api-method-doc',
+    'interface-contract-doc',
     'c-buffer-fix',
     'english-grouped-line-comments',
     'strict-english-per-line',
     'self-explanatory-write',
-    'preserve-existing-english',
     'json-no-comments',
     'read-only-explanation',
   ]);
@@ -90,6 +94,8 @@ test('需要复现源码的行为定义保留 input_code', () => {
     'strict-english-per-line', 'json-no-comments', 'read-only-code-review', 'negated-strict-write',
     'preserve-existing-english', 'replace-stale-comment', 'french-method-doc',
     'project-convention-english', 'react-state-sync', 'self-explanatory-write',
+    'public-api-method-doc', 'interface-contract-doc',
+    'private-method-selection', 'interface-implementation-no-duplicate',
     'cpp-ownership-transfer', 'sql-partial-unique-index', 'terraform-rolling-availability',
   ];
   for (const id of ids) assert.ok(casesById.get(id).input_code?.trim(), id);
@@ -260,6 +266,56 @@ validResponses.set('self-explanatory-write', makeResponse('self-explanatory-writ
   explanation: '已完成完整改动的注释审查，无需新增代码注释。', executable: 2,
 }));
 
+const publicApiDoc = '查询订单摘要供调用方展示；订单不存在时明确失败，避免返回不完整结果。';
+validResponses.set('public-api-method-doc', makeResponse('public-api-method-doc', {
+  code: `public final class OrderQueryService {
+    private final OrderRepository repository;
+    public OrderQueryService(OrderRepository repository) { this.repository = repository; }
+    /** ${publicApiDoc} */
+    public OrderSummary getOrderSummary(String orderId) {
+        return repository.findSummary(orderId).orElseThrow(() -> new OrderNotFoundException(orderId));
+    }
+}`,
+  comments: [comment(publicApiDoc, 'doc')], executable: 3,
+}));
+
+const interfaceDoc = '统一支付授权入口，所有实现都必须返回调用方可处理的授权结果。';
+validResponses.set('interface-contract-doc', makeResponse('interface-contract-doc', {
+  code: `/** ${interfaceDoc} */
+export interface PaymentGateway {
+  authorize(request: PaymentRequest): Promise<AuthorizationResult>;
+}`,
+  comments: [comment(interfaceDoc, 'doc')], executable: 0,
+}));
+
+const privateMethodComment = '应收金额向上取整到分，避免结算因精度截断而少收。';
+validResponses.set('private-method-selection', makeResponse('private-method-selection', {
+  code: `export class SettlementCalculator {
+  private readonly currency: string;
+  public constructor(currency: string) { this.currency = currency; }
+  public getCurrency(): string { return this.currency; }
+  /** ${privateMethodComment} */
+  private roundReceivable(amount: number): number { return Math.ceil(amount * 100) / 100; }
+}`,
+  comments: [comment(privateMethodComment, 'doc')], executable: 4,
+}));
+
+const preservedInterfaceDoc = '统一支付授权入口，实现必须返回调用方可处理的授权结果。';
+validResponses.set('interface-implementation-no-duplicate', makeResponse('interface-implementation-no-duplicate', {
+  code: `/** ${preservedInterfaceDoc} */
+export interface PaymentGateway {
+  authorize(request: PaymentRequest): Promise<AuthorizationResult>;
+}
+export class StripePaymentGateway implements PaymentGateway {
+  private readonly client: StripeClient;
+  public constructor(client: StripeClient) { this.client = client; }
+  public authorize(request: PaymentRequest): Promise<AuthorizationResult> {
+    return this.client.authorize(request);
+  }
+}`,
+  explanation: '已完成完整改动的注释审查；接口契约仍然准确，透明实现无需新增注释。', executable: 4,
+}));
+
 const boundaryComment = '为字符串终止符额外保留一个字节，避免满缓冲区读取后越界写入。';
 const ownershipComment = '写入 out 后由调用方接管 buffer；本函数仅在失败路径释放。';
 validResponses.set('c-buffer-fix', makeResponse('c-buffer-fix', {
@@ -376,8 +432,8 @@ validResponses.set('terraform-rolling-availability', makeResponse('terraform-rol
   comments: [comment(terraformComment, 'line', 2)], executable: 5, independent: 1,
 }));
 
-test('19 条确定性案例各自通过完整分支检查', async (context) => {
-  assert.equal(validResponses.size, 19);
+test('23 条确定性案例各自通过完整分支检查', async (context) => {
+  assert.equal(validResponses.size, 23);
   for (const [id, response] of validResponses) {
     await context.test(id, () => {
       const result = gradeCase(casesById.get(id), response);
@@ -397,6 +453,81 @@ function expectRejected(label, id, response, failedCheck) {
       `缺少失败检查 ${failedCheck}：${JSON.stringify(result.checks, null, 2)}`);
   });
 }
+
+const obviousPublicApiDoc = structuredClone(validResponses.get('public-api-method-doc'));
+obviousPublicApiDoc.code = obviousPublicApiDoc.code.replace(publicApiDoc, '获取订单摘要。');
+obviousPublicApiDoc.comments[0].text = '获取订单摘要。';
+expectRejected('公共方法注释只复述方法名', 'public-api-method-doc', obviousPublicApiDoc,
+  'Public API doc explains purpose and observable missing-order behavior');
+
+const obviousInterfaceDoc = structuredClone(validResponses.get('interface-contract-doc'));
+obviousInterfaceDoc.code = obviousInterfaceDoc.code.replace(interfaceDoc, '支付网关。');
+obviousInterfaceDoc.comments[0].text = '支付网关。';
+expectRejected('接口注释只复述接口名', 'interface-contract-doc', obviousInterfaceDoc,
+  'Interface doc explains responsibility and implementer contract');
+
+const negatedPublicApiDoc = structuredClone(validResponses.get('public-api-method-doc'));
+const negatedPublicText = '不查询订单摘要，订单不存在时也不会失败。';
+negatedPublicApiDoc.code = negatedPublicApiDoc.code.replace(publicApiDoc, negatedPublicText);
+negatedPublicApiDoc.comments[0].text = negatedPublicText;
+expectRejected('公共方法注释否定实际契约', 'public-api-method-doc', negatedPublicApiDoc,
+  'Public API doc explains purpose and observable missing-order behavior');
+
+const synonymNegatedPublicApiDoc = structuredClone(validResponses.get('public-api-method-doc'));
+const synonymNegatedPublicText = '没有查询订单摘要，订单不存在时没有失败。';
+synonymNegatedPublicApiDoc.code = synonymNegatedPublicApiDoc.code.replace(publicApiDoc, synonymNegatedPublicText);
+synonymNegatedPublicApiDoc.comments[0].text = synonymNegatedPublicText;
+expectRejected('公共方法注释使用同义否定词违反契约', 'public-api-method-doc', synonymNegatedPublicApiDoc,
+  'Public API doc explains purpose and observable missing-order behavior');
+
+const trailingNegatedPublicApiDoc = structuredClone(validResponses.get('public-api-method-doc'));
+const trailingNegatedPublicText = '查询订单摘要，但订单不存在时失败不会发生。';
+trailingNegatedPublicApiDoc.code = trailingNegatedPublicApiDoc.code.replace(publicApiDoc, trailingNegatedPublicText);
+trailingNegatedPublicApiDoc.comments[0].text = trailingNegatedPublicText;
+expectRejected('公共方法注释使用后置否定违反契约', 'public-api-method-doc', trailingNegatedPublicApiDoc,
+  'Public API doc explains purpose and observable missing-order behavior');
+
+const negatedInterfaceDoc = structuredClone(validResponses.get('interface-contract-doc'));
+const negatedInterfaceText = '支付授权接口与实现者无契约，调用方不应获得返回保证。';
+negatedInterfaceDoc.code = negatedInterfaceDoc.code.replace(interfaceDoc, negatedInterfaceText);
+negatedInterfaceDoc.comments[0].text = negatedInterfaceText;
+expectRejected('接口注释否定实现者契约', 'interface-contract-doc', negatedInterfaceDoc,
+  'Interface doc explains responsibility and implementer contract');
+
+const synonymNegatedInterfaceDoc = structuredClone(validResponses.get('interface-contract-doc'));
+const synonymNegatedInterfaceText = '支付授权接口的实现者不存在契约，调用方未获得返回保证。';
+synonymNegatedInterfaceDoc.code = synonymNegatedInterfaceDoc.code.replace(interfaceDoc, synonymNegatedInterfaceText);
+synonymNegatedInterfaceDoc.comments[0].text = synonymNegatedInterfaceText;
+expectRejected('接口注释使用同义否定词违反契约', 'interface-contract-doc', synonymNegatedInterfaceDoc,
+  'Interface doc explains responsibility and implementer contract');
+
+const trailingNegatedInterfaceDoc = structuredClone(validResponses.get('interface-contract-doc'));
+const trailingNegatedInterfaceText = '支付授权由实现者处理，但调用方的返回保证不存在。';
+trailingNegatedInterfaceDoc.code = trailingNegatedInterfaceDoc.code.replace(interfaceDoc, trailingNegatedInterfaceText);
+trailingNegatedInterfaceDoc.comments[0].text = trailingNegatedInterfaceText;
+expectRejected('接口注释使用后置否定违反契约', 'interface-contract-doc', trailingNegatedInterfaceDoc,
+  'Interface doc explains responsibility and implementer contract');
+
+const missingInterface = structuredClone(validResponses.get('interface-implementation-no-duplicate'));
+missingInterface.code = missingInterface.code.replace(
+  `/** ${preservedInterfaceDoc} */\nexport interface PaymentGateway {\n  authorize(request: PaymentRequest): Promise<AuthorizationResult>;\n}\n`,
+  '',
+).replace('export class StripePaymentGateway', `/** ${preservedInterfaceDoc} */\nexport class StripePaymentGateway`);
+expectRejected('实现类不能删除原接口并挪用契约注释', 'interface-implementation-no-duplicate', missingInterface,
+  'Implementation preserves one interface doc without duplication');
+
+const missingInterfaceMember = structuredClone(validResponses.get('interface-implementation-no-duplicate'));
+missingInterfaceMember.code = missingInterfaceMember.code.replace('  authorize(request: PaymentRequest): Promise<AuthorizationResult>;\n', '');
+expectRejected('实现方法不能代替接口成员契约', 'interface-implementation-no-duplicate', missingInterfaceMember,
+  'Implementation preserves one interface doc without duplication');
+
+test('私有高价值方法接受紧邻的行注释', () => {
+  const response = structuredClone(validResponses.get('private-method-selection'));
+  response.code = response.code.replace(`/** ${privateMethodComment} */`, `// ${privateMethodComment}`);
+  response.comments[0].kind = 'line';
+  const result = gradeCase(casesById.get('private-method-selection'), response);
+  assert.equal(result.passed, true, JSON.stringify(result.checks.filter((check) => !check.passed), null, 2));
+});
 
 const javaCommentOnlyControlFlow = makeResponse('java-high-value-write', {
   code: `final class PaymentCallbackService {\n  void handleCallback(String eventId, BigDecimal amount) {\n    // ${javaComment} try { ledgerRepository.save(new LedgerEntry(eventId, amount)); } catch (DuplicateKeyException ignored) { return; }\n    ledgerRepository.save(new LedgerEntry(eventId, amount));\n  }\n}`,
@@ -478,6 +609,31 @@ test('非法但括号平衡的 Python 语法拒绝结果', async () => {
 
 test('Java 真实语法验证支持公开顶层类型', async () => {
   const result = await validateSyntax('java', 'public final class PublicEvalType {}');
+  assert.equal(result.valid, true, result.error);
+});
+
+test('新增公共 Java API 案例通过真实语法验证', async () => {
+  const definition = casesById.get('public-api-method-doc');
+  const response = validResponses.get('public-api-method-doc');
+  const result = await validateCaseSyntax(definition, response.code);
+  assert.equal(result.valid, true, result.error);
+  assert.equal(result.tool, 'javac');
+});
+
+test('TypeScript 接口案例拒绝括号平衡但语法非法的结果', async () => {
+  const definition = casesById.get('interface-contract-doc');
+  const response = structuredClone(validResponses.get('interface-contract-doc'));
+  response.code = `const broken: number = ;\n${response.code}`;
+  const syntaxResult = await validateCaseSyntax(definition, response.code);
+  const grading = gradeCase(definition, response, { syntaxResult });
+  assert.equal(syntaxResult.valid, false);
+  assert.match(syntaxResult.tool, /node/iu);
+  assert.equal(grading.passed, false);
+  assert.ok(grading.checks.some((check) => check.name === 'TypeScript preserves the exported payment authorization contract' && !check.passed));
+});
+
+test('TypeScript 语法验证只解析而不执行源码', async () => {
+  const result = await validateSyntax('typescript', 'throw new Error("must not execute");');
   assert.equal(result.valid, true, result.error);
 });
 
