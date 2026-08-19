@@ -18,12 +18,12 @@ export const ALL_CASE_IDS = Object.freeze(
   evalCatalog.evals.map((definition) => definition.case_id),
 );
 export const CORE_CASE_IDS = Object.freeze([
-  'java-high-value-write',
+  'public-api-method-doc',
+  'interface-contract-doc',
   'c-buffer-fix',
   'english-grouped-line-comments',
   'strict-english-per-line',
   'self-explanatory-write',
-  'preserve-existing-english',
   'json-no-comments',
   'read-only-explanation',
 ]);

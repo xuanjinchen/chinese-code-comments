@@ -120,7 +120,7 @@ function validatePackage(packageJson) {
   assert.deepEqual(packageJson.bin, {
     'chinese-code-comments': './bin/chinese-code-comments.js',
   });
-  assert.equal(packageJson.engines?.node, '>=22');
+  assert.equal(packageJson.engines?.node, '>=22.6.0');
   assert.deepEqual(packageJson.files, ['agents', 'bin', 'resources', 'src', 'SKILL.md']);
   assert.equal(packageJson.repository?.url, 'git+https://github.com/xuanjinchen/chinese-code-comments.git');
   assert.equal(packageJson.homepage, 'https://github.com/xuanjinchen/chinese-code-comments#readme');
@@ -247,8 +247,8 @@ function validateGitAttributes(attributes) {
 }
 
 async function main() {
-  const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
-  assert.ok(nodeMajor >= 22, `Node.js 22+ is required; found ${process.versions.node}`);
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+  assert.ok(nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6), `Node.js 22.6+ is required; found ${process.versions.node}`);
 
   const files = await collectFiles(repositoryRoot);
   for (const expectedFile of expectedFiles) {

@@ -291,14 +291,14 @@ test('eval 入口强制显式选择一个 Agent 并解析 core/full profile', ()
     () => parseRunArgs(['--agent', 'codex', '--full', '--full']),
     /--full may only be specified once/,
   );
-  assert.equal(ALL_CASE_IDS.length, 20);
+  assert.equal(ALL_CASE_IDS.length, 24);
   assert.deepEqual(CORE_CASE_IDS, [
-    'java-high-value-write',
+    'public-api-method-doc',
+    'interface-contract-doc',
     'c-buffer-fix',
     'english-grouped-line-comments',
     'strict-english-per-line',
     'self-explanatory-write',
-    'preserve-existing-english',
     'json-no-comments',
     'read-only-explanation',
   ]);
@@ -357,9 +357,9 @@ test('runBehaviorEval 默认执行 8 个 core 案例', async (context) => {
   assert.deepEqual(summary.cases.map(({ caseId }) => caseId), CORE_CASE_IDS);
 });
 
-test('runBehaviorEval full profile 执行全部 20 个案例', async (context) => {
+test('runBehaviorEval full profile 执行全部 24 个案例', async (context) => {
   const { invocationCount, summary } = await runProfile(context, { full: true });
-  assert.equal(invocationCount, 20);
+  assert.equal(invocationCount, 24);
   assert.deepEqual(summary.cases.map(({ caseId }) => caseId), ALL_CASE_IDS);
 });
 

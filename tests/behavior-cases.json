@@ -28,6 +28,46 @@
     "expected_behavior": "完成代码修改和完整注释审查，不新增无维护价值的注释，并明确报告无需新增注释。"
   },
   {
+    "id": "public-api-method-doc",
+    "prompt": "在 OrderQueryService 中新增公开的订单摘要查询方法，找不到订单时抛出 OrderNotFoundException。",
+    "input_code": "public final class OrderQueryService {\n    private final OrderRepository repository;\n\n    public OrderQueryService(OrderRepository repository) {\n        this.repository = repository;\n    }\n}",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "method",
+    "expected_comment_count": 1,
+    "expected_behavior": "新增公共方法默认使用一条简洁声明级注释说明订单摘要查询职责、业务目标和未找到订单的可观察行为。"
+  },
+  {
+    "id": "interface-contract-doc",
+    "prompt": "为支付模块新增 TypeScript PaymentGateway 接口，公开 authorize 授权操作。",
+    "input_code": "export interface PaymentGateway {\n  authorize(request: PaymentRequest): Promise<AuthorizationResult>;\n}",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "api",
+    "expected_comment_count": 1,
+    "expected_behavior": "在接口声明处用一条简洁文档注释说明支付授权职责和实现者契约，不为清晰的成员签名重复同义注释。"
+  },
+  {
+    "id": "private-method-selection",
+    "prompt": "新增结算金额向上取整方法和简单 currency getter；向上取整用于避免结算少收。",
+    "input_code": "export class SettlementCalculator {\n  private readonly currency: string;\n\n  public constructor(currency: string) {\n    this.currency = currency;\n  }\n}",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_comment_count": 1,
+    "expected_behavior": "只注释包含防止少收约束的私有取整方法，不注释自解释的简单 getter。"
+  },
+  {
+    "id": "interface-implementation-no-duplicate",
+    "prompt": "新增 StripePaymentGateway 实现，authorize 直接委托 client.authorize，保持既有接口契约。",
+    "input_code": "/** 统一支付授权入口，实现必须返回调用方可处理的授权结果。 */\nexport interface PaymentGateway {\n  authorize(request: PaymentRequest): Promise<AuthorizationResult>;\n}",
+    "should_invoke": true,
+    "expected_language": "zh-CN",
+    "expected_granularity": "default",
+    "expected_comment_count": 0,
+    "expected_behavior": "保留接口契约注释，不在无差异的透明实现上重复同义文档，并报告无需新增注释。"
+  },
+  {
     "id": "c-buffer-fix",
     "prompt": "修复 C socket 读取中的缓冲区越界和错误路径资源泄漏。",
     "should_invoke": true,
