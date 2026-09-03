@@ -19,7 +19,7 @@ export const ALL_CASE_IDS = Object.freeze(
 );
 export const CORE_CASE_IDS = Object.freeze([
   'public-api-method-doc',
-  'interface-contract-doc',
+  'complex-private-method-doc',
   'c-buffer-fix',
   'english-grouped-line-comments',
   'strict-english-per-line',

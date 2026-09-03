@@ -130,6 +130,7 @@ const CASE_LANGUAGES = new Map([
   ['public-api-method-doc', 'java'],
   ['interface-contract-doc', 'typescript'],
   ['private-method-selection', 'typescript'],
+  ['complex-private-method-doc', 'typescript'],
   ['interface-implementation-no-duplicate', 'typescript'],
   ['japanese-method-doc', 'java'],
   ['french-method-doc', 'java'],

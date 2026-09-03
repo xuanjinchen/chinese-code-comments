@@ -22,6 +22,7 @@ const expectedCoverage = {
   'public-api-method-doc': [true, 'zh-CN', 'method'],
   'interface-contract-doc': [true, 'zh-CN', 'api'],
   'private-method-selection': [true, 'zh-CN', 'default'],
+  'complex-private-method-doc': [true, 'zh-CN', 'method'],
   'interface-implementation-no-duplicate': [true, 'zh-CN', 'default'],
   'c-buffer-fix': [true, 'zh-CN', 'default'],
   'japanese-method-doc': [true, 'ja', 'method'],
@@ -42,9 +43,9 @@ const expectedCoverage = {
   'terraform-rolling-availability': [true, 'zh-CN', 'default'],
 };
 
-test('行为目录保留 24 条定义和 23 条 deterministic grader 案例', () => {
-  assert.equal(cases.length, 24);
-  assert.equal(cases.filter(({ id }) => id !== 'read-only-explanation').length, 23);
+test('行为目录保留 25 条定义和 24 条 deterministic grader 案例', () => {
+  assert.equal(cases.length, 25);
+  assert.equal(cases.filter(({ id }) => id !== 'read-only-explanation').length, 24);
   assert.equal(new Set(cases.map(({ id }) => id)).size, cases.length);
 });
 
@@ -62,10 +63,10 @@ test('eval 目录使用唯一字符串 case_id 与行为目录完整关联', () 
 test('full eval 覆盖全部定义且 core eval 是唯一有效子集', () => {
   const evalCaseIds = evalDocument.evals.map(({ case_id: caseId }) => caseId);
   assert.deepEqual(ALL_CASE_IDS, evalCaseIds);
-  assert.equal(ALL_CASE_IDS.length, 24);
+  assert.equal(ALL_CASE_IDS.length, 25);
   assert.deepEqual(CORE_CASE_IDS, [
     'public-api-method-doc',
-    'interface-contract-doc',
+    'complex-private-method-doc',
     'c-buffer-fix',
     'english-grouped-line-comments',
     'strict-english-per-line',
@@ -95,7 +96,7 @@ test('需要复现源码的行为定义保留 input_code', () => {
     'preserve-existing-english', 'replace-stale-comment', 'french-method-doc',
     'project-convention-english', 'react-state-sync', 'self-explanatory-write',
     'public-api-method-doc', 'interface-contract-doc',
-    'private-method-selection', 'interface-implementation-no-duplicate',
+    'private-method-selection', 'complex-private-method-doc', 'interface-implementation-no-duplicate',
     'cpp-ownership-transfer', 'sql-partial-unique-index', 'terraform-rolling-availability',
   ];
   for (const id of ids) assert.ok(casesById.get(id).input_code?.trim(), id);
@@ -300,6 +301,31 @@ validResponses.set('private-method-selection', makeResponse('private-method-sele
   comments: [comment(privateMethodComment, 'doc')], executable: 4,
 }));
 
+const complexMethodDoc = '完成订单结算：依次校验订单、计算金额、预留库存并支付，成功后标记已支付；支付失败时释放库存。';
+validResponses.set('complex-private-method-doc', makeResponse('complex-private-method-doc', {
+  code: `export class CheckoutService {
+  /** ${complexMethodDoc} */
+  private async settleOrder(order: Order): Promise<Receipt> {
+    this.validator.validate(order);
+    const total = this.pricing.calculate(order);
+    await this.inventory.reserve(order.items);
+    let payment;
+    try {
+      payment = await this.payments.charge(order.customerId, total);
+    } catch (error) {
+      await this.inventory.release(order.items);
+      throw error;
+    }
+    return await this.orders.markPaid(order.id, payment.id);
+  }
+
+  private isEmpty(order: Order): boolean {
+    return order.items.length === 0;
+  }
+}`,
+  comments: [comment(complexMethodDoc, 'doc', 7)], executable: 8,
+}));
+
 const preservedInterfaceDoc = '统一支付授权入口，实现必须返回调用方可处理的授权结果。';
 validResponses.set('interface-implementation-no-duplicate', makeResponse('interface-implementation-no-duplicate', {
   code: `/** ${preservedInterfaceDoc} */
@@ -432,8 +458,8 @@ validResponses.set('terraform-rolling-availability', makeResponse('terraform-rol
   comments: [comment(terraformComment, 'line', 2)], executable: 5, independent: 1,
 }));
 
-test('23 条确定性案例各自通过完整分支检查', async (context) => {
-  assert.equal(validResponses.size, 23);
+test('24 条确定性案例各自通过完整分支检查', async (context) => {
+  assert.equal(validResponses.size, 24);
   for (const [id, response] of validResponses) {
     await context.test(id, () => {
       const result = gradeCase(casesById.get(id), response);
@@ -446,13 +472,70 @@ test('23 条确定性案例各自通过完整分支检查', async (context) => {
 });
 
 function expectRejected(label, id, response, failedCheck) {
-  test(`旧 grader 反例仍被拒绝：${label}`, () => {
+  test(`grader 反例被拒绝：${label}`, () => {
     const result = gradeCase(casesById.get(id), response);
     assert.equal(result.passed, false);
     assert.ok(result.checks.some((check) => check.name === failedCheck && !check.passed),
       `缺少失败检查 ${failedCheck}：${JSON.stringify(result.checks, null, 2)}`);
   });
 }
+
+const vagueComplexMethodDoc = structuredClone(validResponses.get('complex-private-method-doc'));
+vagueComplexMethodDoc.code = vagueComplexMethodDoc.code.replace(complexMethodDoc, '处理订单结算。');
+vagueComplexMethodDoc.comments[0].text = '处理订单结算。';
+expectRejected('复杂方法注释缺少主要处理阶段', 'complex-private-method-doc', vagueComplexMethodDoc,
+  'Complex method doc explains responsibility and major processing stages');
+
+const misplacedComplexMethodDoc = structuredClone(validResponses.get('complex-private-method-doc'));
+misplacedComplexMethodDoc.code = misplacedComplexMethodDoc.code.replace(
+  `  /** ${complexMethodDoc} */\n  private async settleOrder(order: Order): Promise<Receipt> {`,
+  `  private async settleOrder(order: Order): Promise<Receipt> {\n    /** ${complexMethodDoc} */`,
+);
+expectRejected('复杂方法注释放在方法体内', 'complex-private-method-doc', misplacedComplexMethodDoc,
+  'Complex method has one declaration-level doc comment');
+
+const chargeOutsideRecovery = structuredClone(validResponses.get('complex-private-method-doc'));
+chargeOutsideRecovery.code = chargeOutsideRecovery.code.replace(
+  '    let payment;\n    try {\n      payment = await this.payments.charge(order.customerId, total);',
+  '    const payment = await this.payments.charge(order.customerId, total);\n    try {',
+);
+expectRejected('支付调用位于补偿 try 之外', 'complex-private-method-doc', chargeOutsideRecovery,
+  'Payment recovery wraps only the charge operation');
+
+const markPaidInsideRecovery = structuredClone(validResponses.get('complex-private-method-doc'));
+markPaidInsideRecovery.code = markPaidInsideRecovery.code.replace(
+  '    let payment;\n    try {\n      payment = await this.payments.charge(order.customerId, total);',
+  '    try {\n      const payment = await this.payments.charge(order.customerId, total);\n      return await this.orders.markPaid(order.id, payment.id);',
+).replace('\n    return await this.orders.markPaid(order.id, payment.id);', '');
+expectRejected('订单更新被错误纳入支付补偿范围', 'complex-private-method-doc', markPaidInsideRecovery,
+  'Payment recovery wraps only the charge operation');
+
+const negatedComplexMethodDoc = structuredClone(validResponses.get('complex-private-method-doc'));
+const negatedComplexMethodText = '订单结算不会校验订单，不计算金额，不预留库存，也不支付；失败时不释放库存。';
+negatedComplexMethodDoc.code = negatedComplexMethodDoc.code.replace(complexMethodDoc, negatedComplexMethodText);
+negatedComplexMethodDoc.comments[0].text = negatedComplexMethodText;
+expectRejected('复杂方法注释否定实际处理逻辑', 'complex-private-method-doc', negatedComplexMethodDoc,
+  'Complex method doc does not contradict the implementation');
+
+test('复杂方法注释接受准确的业务同义表达', () => {
+  const response = structuredClone(validResponses.get('complex-private-method-doc'));
+  const synonymDoc = '完成订单结算：先核验并核价，再占库和扣款，成功后落单；扣款失败时释放库存。';
+  response.code = response.code.replace(complexMethodDoc, synonymDoc);
+  response.comments[0].text = synonymDoc;
+  const result = gradeCase(casesById.get('complex-private-method-doc'), response);
+  assert.equal(result.passed, true, JSON.stringify(result.checks.filter((check) => !check.passed), null, 2));
+});
+
+const documentedSimplePrivate = structuredClone(validResponses.get('complex-private-method-doc'));
+const simplePrivateDoc = '判断订单是否为空。';
+documentedSimplePrivate.code = documentedSimplePrivate.code.replace(
+  '  private isEmpty(order: Order): boolean {',
+  `  /** ${simplePrivateDoc} */\n  private isEmpty(order: Order): boolean {`,
+);
+documentedSimplePrivate.comments.push(comment(simplePrivateDoc, 'doc'));
+documentedSimplePrivate.comment_count += 1;
+expectRejected('简单私有方法被强制添加注释', 'complex-private-method-doc', documentedSimplePrivate,
+  'Simple private helper remains undocumented');
 
 const obviousPublicApiDoc = structuredClone(validResponses.get('public-api-method-doc'));
 obviousPublicApiDoc.code = obviousPublicApiDoc.code.replace(publicApiDoc, '获取订单摘要。');
@@ -630,6 +713,14 @@ test('TypeScript 接口案例拒绝括号平衡但语法非法的结果', async 
   assert.match(syntaxResult.tool, /node/iu);
   assert.equal(grading.passed, false);
   assert.ok(grading.checks.some((check) => check.name === 'TypeScript preserves the exported payment authorization contract' && !check.passed));
+});
+
+test('复杂私有 TypeScript 方法案例通过真实语法验证', async () => {
+  const definition = casesById.get('complex-private-method-doc');
+  const response = validResponses.get('complex-private-method-doc');
+  const result = await validateCaseSyntax(definition, response.code);
+  assert.equal(result.valid, true, result.error);
+  assert.match(result.tool, /node/iu);
 });
 
 test('TypeScript 语法验证只解析而不执行源码', async () => {

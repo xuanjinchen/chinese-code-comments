@@ -10,6 +10,7 @@ const CASE_LANGUAGES = {
   'public-api-method-doc': 'java',
   'interface-contract-doc': 'typescript',
   'private-method-selection': 'typescript',
+  'complex-private-method-doc': 'typescript',
   'interface-implementation-no-duplicate': 'typescript',
   'c-buffer-fix': 'c',
   'japanese-method-doc': 'java',
@@ -225,6 +226,9 @@ function resultFor(caseId, checks) {
   };
 }
 
+/**
+ * 评估单个 Agent 响应：先验证通用结构和注释契约，再执行案例专属断言并汇总失败证据。
+ */
 export function gradeCase(definition, response, { syntaxResult = null } = {}) {
   const schemaErrors = validateResponse(response);
   if (schemaErrors.length > 0) {
@@ -317,6 +321,48 @@ export function gradeCase(definition, response, { syntaxResult = null } = {}) {
       const getterDocumented = /(?:\/\*\*?[\s\S]*?\*\/|\/\/[^\r\n]*)\s*public\s+getCurrency/u.test(response.code);
       add('Only the constrained private method receives a declaration comment', commentCount === 1 && adjacentPrivateComment && !getterDocumented, `comments=${commentCount}; private=${adjacentPrivateComment}; getter=${getterDocumented}.`);
       add('Private method doc explains upward rounding and under-collection risk', /向上|进位|ceil/iu.test(joinedComments) && /少收|应收|结算|精度/iu.test(joinedComments), `Comment text: ${joinedComments}`);
+      break;
+    }
+    case 'complex-private-method-doc': {
+      const visible = codeOnly('typescript', response.code).code;
+      const signature = /private\s+async\s+settleOrder\s*\(\s*order\s*:\s*Order\s*\)\s*:\s*Promise\s*<\s*Receipt\s*>/u.test(visible);
+      const stages = [
+        /this\.validator\.validate\s*\(\s*order\s*\)/u,
+        /this\.pricing\.calculate\s*\(\s*order\s*\)/u,
+        /this\.inventory\.reserve\s*\(\s*order\.items\s*\)/u,
+        /this\.payments\.charge\s*\(\s*order\.customerId\s*,\s*total\s*\)/u,
+        /this\.orders\.markPaid\s*\(\s*order\.id\s*,\s*payment\.id\s*\)/u,
+      ].map((pattern) => pattern.exec(visible)?.index ?? -1);
+      add('Complex private method preserves all settlement stages in order', syntaxValid('typescript') && signature && stages.every((index, position) => index >= 0 && (position === 0 || index > stages[position - 1])), `${syntaxEvidence}; stages=${stages}.`);
+      const recovery = /try\s*\{(?<attempt>[^{}]*)\}\s*catch\s*\(\s*(?<name>[A-Za-z_]\w*)\s*\)\s*\{(?<failure>[^{}]*)\}/u.exec(visible);
+      const afterRecovery = recovery ? visible.slice(recovery.index + recovery[0].length) : '';
+      const chargeInside = Boolean(recovery && /await\s+this\.payments\.charge\s*\(\s*order\.customerId\s*,\s*total\s*\)/u.test(recovery.groups.attempt));
+      const markPaidOutside = recovery
+        && !/this\.orders\.markPaid/u.test(recovery.groups.attempt)
+        && /this\.orders\.markPaid\s*\(\s*order\.id\s*,\s*payment\.id\s*\)/u.test(afterRecovery);
+      add('Payment recovery wraps only the charge operation', chargeInside && markPaidOutside && stages[2] < recovery?.index, 'Checked reserve-before-try, charge-inside-try, and markPaid-after-catch ordering.');
+      const compensates = recovery
+        && /await\s+this\.inventory\.release\s*\(\s*order\.items\s*\)/u.test(recovery.groups.failure)
+        && new RegExp(`throw\\s+${recovery.groups.name}\\s*;?`, 'u').test(recovery.groups.failure);
+      add('Payment failure releases reserved inventory and rethrows the original error', compensates, 'Checked catch cleanup and rethrow identity.');
+      const adjacentDoc = /\/\*\*[\s\S]*?\*\/\s*private\s+async\s+settleOrder/u.test(response.code);
+      add('Complex method has one declaration-level doc comment', commentCount === 1 && comments[0].kind === 'doc' && adjacentDoc, `comments=${commentCount}; adjacent=${adjacentDoc}.`);
+      const simplePrivate = /private\s+isEmpty\s*\(\s*order\s*:\s*Order\s*\)\s*:\s*boolean\s*\{\s*return\s+order\.items\.length\s*===\s*0\s*;?\s*\}/u.test(visible);
+      const simplePrivateDocumented = /(?:\/\*\*[\s\S]*?\*\/|\/\/[^\r\n]*)\s*private\s+isEmpty/u.test(response.code);
+      add('Simple private helper remains undocumented', simplePrivate && !simplePrivateDocumented, `helper=${simplePrivate}; documented=${simplePrivateDocumented}.`);
+      const responsibility = /订单|结算/u.test(joinedComments);
+      const documentedStages = [
+        /校验|验证|检查|核验/u,
+        /计算|计价|金额|核价/u,
+        /库存|预留|占库|锁库/u,
+        /支付|扣款|收款/u,
+        /已支付|完成|结果|落单|更新订单|订单状态/u,
+      ].filter((pattern) => pattern.test(joinedComments)).length;
+      add('Complex method doc explains responsibility and major processing stages', responsibility && documentedStages >= 4, `Comment text: ${joinedComments}; documented stages=${documentedStages}.`);
+      add('Complex method doc records failure cleanup', /失败|异常/u.test(joinedComments) && /释放|补偿|回滚/u.test(joinedComments) && /库存/u.test(joinedComments), `Comment text: ${joinedComments}`);
+      const actions = '校验|验证|检查|核验|计算|计价|核价|预留|占库|锁库|支付|扣款|收款|标记|落单|更新订单|释放|补偿|回滚';
+      const contradicts = new RegExp(`(?:不|不会|未|没有|无需|并非)[^，。；;]{0,10}(?:${actions})|(?:${actions})[^，。；;]{0,8}(?:不存在|不会|不执行|未执行)`, 'u').test(joinedComments);
+      add('Complex method doc does not contradict the implementation', !contradicts, `Comment text: ${joinedComments}`);
       break;
     }
     case 'interface-implementation-no-duplicate': {

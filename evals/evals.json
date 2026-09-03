@@ -302,6 +302,19 @@
       ]
     },
     {
+      "id": 25,
+      "case_id": "complex-private-method-doc",
+      "prompt": "修改下面 CheckoutService 的复杂 private settleOrder 方法：支付失败时必须释放已预留库存，然后继续抛出原错误。用户没有单独提出注释要求；简单 private isEmpty 方法保持自解释。\n\n```typescript\nexport class CheckoutService {\n  private async settleOrder(order: Order): Promise<Receipt> {\n    this.validator.validate(order);\n    const total = this.pricing.calculate(order);\n    await this.inventory.reserve(order.items);\n    const payment = await this.payments.charge(order.customerId, total);\n    return this.orders.markPaid(order.id, payment.id);\n  }\n\n  private isEmpty(order: Order): boolean {\n    return order.items.length === 0;\n  }\n}\n```",
+      "expected_output": "选择 SCOPED 和 zh-CN；保留结算主流程，增加支付失败释放库存并重抛的补偿逻辑，同时在 settleOrder 声明处新增且只新增一条简洁 TSDoc，说明订单结算职责、主要阶段和失败清理。",
+      "files": [],
+      "expectations": [
+        "mode 为 SCOPED，language 为 zh-CN。",
+        "settleOrder 保持 private async，按校验、计价、预留库存、支付和标记已支付的阶段处理订单。",
+        "支付失败时释放已预留库存并继续抛出原错误。",
+        "settleOrder 声明前只有一条中文 doc 注释，说明结算职责、主要处理阶段和失败清理；isEmpty 保持无注释，并报告完整注释审查。"
+      ]
+    },
+    {
       "id": 24,
       "case_id": "interface-implementation-no-duplicate",
       "prompt": "为下面已文档化的 TypeScript 接口新增 StripePaymentGateway 实现；authorize 直接返回 client.authorize(request)，没有额外约束或行为差异。用户没有单独提出注释要求。\n\n```typescript\n/** 统一支付授权入口，实现必须返回调用方可处理的授权结果。 */\nexport interface PaymentGateway {\n  authorize(request: PaymentRequest): Promise<AuthorizationResult>;\n}\n```",
